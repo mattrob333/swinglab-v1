@@ -1,0 +1,7 @@
+Screens built: Quick Capture (PRD §6.1), Tag Swing (PRD §6.2), Compare (PRD §6.4).
+Sync engine: Phase-normalized frame mapping (PRD §9). Phase model: 7 phases.
+No raw MP4 seeking during scrub — frame-cache rendering.
+
+PR matches mockup: black bg, neon green accents, stacked 1:1 pro/player, synced scrubber, phase labels, Phase Sync toggle.
+
+Verify: npm run build (compiles clean). Visit / → /tag → /compare.
