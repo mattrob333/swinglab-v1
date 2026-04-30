@@ -87,7 +87,7 @@ export const YOUTH_SWINGS: SwingVideoInfo[] = [
   {
     id: "youth-nov2023",
     label: "Youth Swing Nov 2023",
-    src: "/videos/youth/20231127_173111%20(3).mp4",
+    src: "/videos/youth/youth-nov2023.mp4",
     fps: 30,
     durationMs: 13610,
     width: 760,
