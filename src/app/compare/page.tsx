@@ -9,20 +9,13 @@ import {
   PHASES,
   PHASE_POSITIONS,
   PHASE_LABELS,
-  REQUIRED_PHASES,
   type Phase,
 } from "@/lib/swing-phases";
-
-function emptyPhaseMarkers(): Record<string, null> {
-  const m: Record<string, null> = {};
-  PHASES.forEach((p) => (m[p] = null));
-  return m;
-}
 
 export default function ComparePage() {
   const router = useRouter();
 
-  // Sync state — starts unlocked (tagging mode), scrubber at 0 (Stance)
+  // Sync state — unlocks first for tagging, starts at frame 0
   const [syncLocked, setSyncLocked] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<"pro" | "player">("pro");
   const [sharedProgress, setSharedProgress] = useState(0);
@@ -37,23 +30,33 @@ export default function ComparePage() {
   const [showProSelector, setShowProSelector] = useState(false);
   const [showYouthSelector, setShowYouthSelector] = useState(false);
 
-  // Phase markers — start empty, user sets them manually
-  const [proPhaseMarkers, setProPhaseMarkers] =
-    useState<Record<string, number | null>>(emptyPhaseMarkers);
-  const [playerPhaseMarkers, setPlayerPhaseMarkers] =
-    useState<Record<string, number | null>>(emptyPhaseMarkers);
+  // Phase markers: Record<phase, progress-value>. All start at 0.
+  // We track separately which phases the user has explicitly marked.
+  const [proPhaseMarkers, setProPhaseMarkers] = useState<Record<string, number>>(
+    Object.fromEntries(PHASES.map((p) => [p, 0]))
+  );
+  const [playerPhaseMarkers, setPlayerPhaseMarkers] = useState<Record<string, number>>(
+    Object.fromEntries(PHASES.map((p) => [p, 0]))
+  );
 
-  // Reset markers when video changes
+  // Phase marking set per video
+  const emptySet = () => new Set<string>();
+  const [proMarked, setProMarked] = useState<Set<string>>(emptySet);
+  const [playerMarked, setPlayerMarked] = useState<Set<string>>(emptySet);
+
+  // Reset when video changes
   const selectPro = useCallback((id: string) => {
     setProId(id);
-    setProPhaseMarkers(emptyPhaseMarkers());
+    setProPhaseMarkers(Object.fromEntries(PHASES.map((p) => [p, 0])));
+    setProMarked(emptySet());
     setProProgress(0);
     setShowProSelector(false);
   }, []);
 
   const selectYouth = useCallback((id: string) => {
     setYouthId(id);
-    setPlayerPhaseMarkers(emptyPhaseMarkers());
+    setPlayerPhaseMarkers(Object.fromEntries(PHASES.map((p) => [p, 0])));
+    setPlayerMarked(emptySet());
     setPlayerProgress(0);
     setShowYouthSelector(false);
   }, []);
@@ -102,42 +105,26 @@ export default function ComparePage() {
   );
 
   // Mark current frame on selected video for the given phase
-  const markPhaseOnSelected = useCallback(
+  const markPhase = useCallback(
     (phaseName: string) => {
-      const p = selectedVideo === "pro" ? proProgress : playerProgress;
+      const prog = selectedVideo === "pro" ? proProgress : playerProgress;
       if (selectedVideo === "pro") {
-        setProPhaseMarkers((prev) => ({ ...prev, [phaseName]: p }));
+        setProPhaseMarkers((prev) => ({ ...prev, [phaseName]: prog }));
+        setProMarked((prev) => new Set(prev).add(phaseName));
       } else {
-        setPlayerPhaseMarkers((prev) => ({ ...prev, [phaseName]: p }));
+        setPlayerPhaseMarkers((prev) => ({ ...prev, [phaseName]: prog }));
+        setPlayerMarked((prev) => new Set(prev).add(phaseName));
       }
     },
     [selectedVideo, proProgress, playerProgress]
   );
 
-  // All 7 phases marked on both sides?
-  const all7OnBoth = useMemo(
-    () =>
-      PHASES.every(
-        (p) => proPhaseMarkers[p] != null && playerPhaseMarkers[p] != null
-      ),
-    [proPhaseMarkers, playerPhaseMarkers]
-  );
-
-  // All 7 on currently selected video?
-  const all7OnSelected = useMemo(() => {
-    const m = selectedVideo === "pro" ? proPhaseMarkers : playerPhaseMarkers;
-    return PHASES.every((p) => m[p] != null);
-  }, [selectedVideo, proPhaseMarkers, playerPhaseMarkers]);
-
   // Counts
-  const proMarkedCount = useMemo(
-    () => PHASES.filter((p) => proPhaseMarkers[p] != null).length,
-    [proPhaseMarkers]
-  );
-  const playerMarkedCount = useMemo(
-    () => PHASES.filter((p) => playerPhaseMarkers[p] != null).length,
-    [playerPhaseMarkers]
-  );
+  const proCount = proMarked.size;
+  const playerCount = playerMarked.size;
+  const all7OnPro = proCount >= 7;
+  const all7OnPlayer = playerCount >= 7;
+  const all7OnBoth = all7OnPro && all7OnPlayer;
 
   // Swings
   const proSwing = useMemo(
@@ -149,17 +136,11 @@ export default function ComparePage() {
     [youthId]
   );
 
-  // Next unmarked phase on selected video
+  // Next unmarked phase
   const nextUnmarked = useMemo(() => {
-    const m = selectedVideo === "pro" ? proPhaseMarkers : playerPhaseMarkers;
-    return PHASES.find((p) => m[p] == null);
-  }, [selectedVideo, proPhaseMarkers, playerPhaseMarkers]);
-
-  // Which button a user should tap next on the OTHER video (after finishing current)
-  const otherNeedsMarking = useMemo(() => {
-    const m = selectedVideo === "pro" ? playerPhaseMarkers : proPhaseMarkers;
-    return PHASES.some((p) => m[p] == null);
-  }, [selectedVideo, proPhaseMarkers, playerPhaseMarkers]);
+    const mkd = selectedVideo === "pro" ? proMarked : playerMarked;
+    return PHASES.find((p) => !mkd.has(p));
+  }, [selectedVideo, proMarked, playerMarked]);
 
   return (
     <div className="flex flex-col min-h-dvh bg-black safe-top safe-bottom">
@@ -208,7 +189,7 @@ export default function ComparePage() {
             src={proSwing.src}
             fps={proSwing.fps}
             totalFrames={proSwing.totalFrames}
-            phaseFrames={proPhaseMarkers as Record<string, number>}
+            phaseFrames={proPhaseMarkers}
             progress={syncLocked ? sharedProgress : proProgress}
             phaseNames={PHASES as unknown as string[]}
             phasePositions={PHASE_POSITIONS as unknown as Record<string, number>}
@@ -236,7 +217,7 @@ export default function ComparePage() {
             src={youthSwing.src}
             fps={youthSwing.fps}
             totalFrames={youthSwing.totalFrames}
-            phaseFrames={playerPhaseMarkers as Record<string, number>}
+            phaseFrames={playerPhaseMarkers}
             progress={syncLocked ? sharedProgress : playerProgress}
             phaseNames={PHASES as unknown as string[]}
             phasePositions={PHASE_POSITIONS as unknown as Record<string, number>}
@@ -251,16 +232,14 @@ export default function ComparePage() {
         {/* Instruction */}
         {!syncLocked && (
           <div className="text-center mb-1">
-            {all7OnSelected && !all7OnBoth ? (
+            {proCount >= 7 && playerCount < 7 ? (
               <p className="text-[11px] text-emerald-400">
-                ✅ All 7 marked on {selectedVideo === "pro" ? "Pro" : "Player"}!{" "}
-                Now tap the other video to mark its 7 phases.
+                ✅ All 7 Pro phases marked! Now tap the Player video and mark its 7 phases.
               </p>
             ) : nextUnmarked ? (
               <p className="text-[11px] text-amber-400">
-                Scrub {selectedVideo === "pro" ? "Pro" : "Player"} video to find{" "}
-                <span className="text-neon font-bold">{PHASE_LABELS[nextUnmarked]}</span>{" "}
-                position, then tap the button.
+                Scrub <span className="text-white font-semibold">{selectedVideo === "pro" ? "Pro" : "Player"}</span> to find{" "}
+                <span className="text-neon font-bold">{PHASE_LABELS[nextUnmarked]}</span> frame, then tap that button.
               </p>
             ) : (
               <p className="text-[11px] text-emerald-400">
@@ -293,13 +272,10 @@ export default function ComparePage() {
             Change Player
           </button>
 
-          {/* Phase Sync toggle */}
+          {/* Phase Sync */}
           {syncLocked ? (
             <button
-              onClick={() => {
-                setSyncLocked(false);
-                setSelectedVideo("pro");
-              }}
+              onClick={() => { setSyncLocked(false); setSelectedVideo("pro"); }}
               className="flex items-center gap-1.5 border border-neon/80 rounded-full px-4 py-1.5 bg-neon/10"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#C8F000" strokeWidth="2.5">
@@ -310,9 +286,7 @@ export default function ComparePage() {
             </button>
           ) : (
             <button
-              onClick={() => {
-                if (all7OnBoth) setSyncLocked(true);
-              }}
+              onClick={() => { if (all7OnBoth) setSyncLocked(true); }}
               disabled={!all7OnBoth}
               className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 border text-xs transition ${
                 all7OnBoth
@@ -334,16 +308,13 @@ export default function ComparePage() {
           <>
             <div className="grid grid-cols-4 gap-1.5 pb-1">
               {PHASES.map((phaseName) => {
-                const markers =
-                  selectedVideo === "pro"
-                    ? proPhaseMarkers
-                    : playerPhaseMarkers;
-                const marked = markers[phaseName] != null;
+                const marked =
+                  (selectedVideo === "pro" ? proMarked : playerMarked).has(phaseName);
                 const isNext = phaseName === nextUnmarked;
                 return (
                   <button
                     key={phaseName}
-                    onClick={() => markPhaseOnSelected(phaseName)}
+                    onClick={() => markPhase(phaseName)}
                     className={`text-[10px] font-semibold py-2 rounded-lg transition-all ${
                       marked
                         ? "bg-neon text-black"
@@ -359,13 +330,13 @@ export default function ComparePage() {
               })}
             </div>
 
-            {/* Marking progress */}
+            {/* Progress */}
             <div className="flex justify-center gap-4 text-[10px] text-gray-500 pb-1">
               <span className={selectedVideo === "pro" ? "text-neon font-semibold" : ""}>
-                Pro: {proMarkedCount}/7
+                Pro: {proCount}/7
               </span>
               <span className={selectedVideo === "player" ? "text-neon font-semibold" : ""}>
-                Player: {playerMarkedCount}/7
+                Player: {playerCount}/7
               </span>
             </div>
           </>
@@ -403,11 +374,7 @@ export default function ComparePage() {
 }
 
 function SwingSelector({
-  swings,
-  title,
-  activeId,
-  onSelect,
-  onClose,
+  swings, title, activeId, onSelect, onClose,
 }: {
   swings: SwingVideoInfo[];
   title: string;
@@ -424,21 +391,15 @@ function SwingSelector({
       </div>
       <div className="grid grid-cols-1 gap-3 px-4 flex-1 overflow-y-auto pb-8">
         {swings.map((swing) => (
-          <button
-            key={swing.id}
-            onClick={() => onSelect(swing.id)}
+          <button key={swing.id} onClick={() => onSelect(swing.id)}
             className={`flex items-center gap-4 bg-surface rounded-xl overflow-hidden border-2 p-3 transition ${
-              swing.id === activeId ? "border-neon" : "border-transparent"
-            }`}
-          >
+              swing.id === activeId ? "border-neon" : "border-transparent"}`}>
             <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-gray-800 to-gray-900 flex-shrink-0 flex items-center justify-center overflow-hidden">
               <video src={swing.src} className="w-full h-full object-cover" muted preload="metadata" />
             </div>
             <div className="text-left flex-1">
               <p className="text-sm font-medium">{swing.label}</p>
-              <p className="text-[11px] text-gray-400">
-                {swing.handedness === "R" ? "Right" : "Left"} handed · {(swing.durationMs / 1000).toFixed(1)}s · {swing.fps}fps
-              </p>
+              <p className="text-[11px] text-gray-400">{swing.handedness === "R" ? "Right" : "Left"} · {(swing.durationMs / 1000).toFixed(1)}s · {swing.fps}fps</p>
             </div>
             {swing.id === activeId && <div className="w-2 h-2 rounded-full bg-neon" />}
           </button>
