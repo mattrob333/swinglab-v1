@@ -7,47 +7,30 @@ interface ScrubberProps {
   progress: number;
   onProgressChange: (p: number) => void;
   currentPhase: Phase;
-  markedPhases?: Phase[];
 }
 
-export default function Scrubber({ progress, onProgressChange, currentPhase, markedPhases }: ScrubberProps) {
+export default function Scrubber({ progress, onProgressChange, currentPhase }: ScrubberProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
 
-  const getProgressFromEvent = useCallback((e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent) => {
+  const getProgress = useCallback((clientX: number) => {
     const track = trackRef.current;
     if (!track) return 0;
     const rect = track.getBoundingClientRect();
-    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-    let p = (clientX - rect.left) / rect.width;
-    p = Math.max(0, Math.min(1, p));
-    return p;
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   }, []);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
+  const handleStart = useCallback((clientX: number) => {
     setDragging(true);
-    const p = getProgressFromEvent(e);
-    onProgressChange(p);
-  }, [getProgressFromEvent, onProgressChange]);
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    setDragging(true);
-    const p = getProgressFromEvent(e);
-    onProgressChange(p);
-  }, [getProgressFromEvent, onProgressChange]);
+    onProgressChange(getProgress(clientX));
+  }, [getProgress, onProgressChange]);
 
   useEffect(() => {
     if (!dragging) return;
     const handleMove = (e: MouseEvent | TouchEvent) => {
       e.preventDefault();
-      const track = trackRef.current;
-      if (!track) return;
-      const rect = track.getBoundingClientRect();
-      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-      let p = (clientX - rect.left) / rect.width;
-      p = Math.max(0, Math.min(1, p));
-      onProgressChange(p);
+      const cx = "touches" in e ? e.touches[0].clientX : e.clientX;
+      onProgressChange(getProgress(cx));
     };
     const handleUp = () => setDragging(false);
     window.addEventListener("mousemove", handleMove);
@@ -60,63 +43,105 @@ export default function Scrubber({ progress, onProgressChange, currentPhase, mar
       window.removeEventListener("touchmove", handleMove);
       window.removeEventListener("touchend", handleUp);
     };
-  }, [dragging, onProgressChange]);
+  }, [dragging, getProgress, onProgressChange]);
 
-  // Snap to phase markers
   const phases = PHASES;
   const phasePositions = phases.map((p) => ({ name: p, pos: PHASE_POSITIONS[p] }));
+  const phaseIdx = phases.indexOf(currentPhase);
+
+  // Color gradients per phase
+  const phaseColors = ["#7170ff","#5e6ad2","#10b981","#27a644","#f59e0b","#f97316","#ef4444"];
 
   return (
-    <div className="w-full px-5 pb-4 pt-2 select-none">
-      {/* Phase labels */}
-      <div className="flex justify-between mb-1 px-0">
+    <div className="w-full px-3 pb-3 pt-0 select-none" style={{ touchAction: "none" }}>
+      {/* Track area */}
+      <div
+        ref={trackRef}
+        className="relative w-full h-10 flex items-center cursor-pointer"
+        onMouseDown={(e) => handleStart(e.clientX)}
+        onTouchStart={(e) => handleStart(e.touches[0].clientX)}
+      >
+        {/* Track line */}
+        <div className="absolute left-0 right-0 h-[2px] bg-white/[0.06] rounded-full" />
+
+        {/* Active fill */}
+        <div
+          className="absolute left-0 h-[2px] rounded-full transition-[width] duration-75"
+          style={{
+            width: `${progress * 100}%`,
+            background: `linear-gradient(90deg, ${phaseColors[Math.min(phaseIdx, 5)]}, ${phaseColors[Math.min(phaseIdx + 1, 6)]})`,
+          }}
+        />
+
+        {/* Phase tick dots */}
+        {phasePositions.map(({ name, pos }, i) => (
+          <div
+            key={name}
+            className="absolute -translate-x-1/2 rounded-full transition-all duration-200"
+            style={{
+              left: `${pos * 100}%`,
+              width: pos <= progress ? 5 : 3,
+              height: pos <= progress ? 5 : 3,
+              backgroundColor: pos <= progress ? phaseColors[i] : "rgba(255,255,255,0.15)",
+            }}
+          />
+        ))}
+
+        {/* Phase chip ON the track — follows scrubber */}
+        <div
+          className="absolute -translate-x-1/2 pointer-events-none transition-[left] duration-75"
+          style={{ left: `${progress * 100}%`, top: "-26px" }}
+        >
+          <div
+            className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider uppercase shadow-lg"
+            style={{
+              backgroundColor: phaseColors[phaseIdx] + "20",
+              border: `1px solid ${phaseColors[phaseIdx]}60`,
+              color: phaseColors[phaseIdx],
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+            }}
+          >
+            <span
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ backgroundColor: phaseColors[phaseIdx] }}
+            />
+            {PHASE_LABELS[currentPhase]}
+          </div>
+        </div>
+
+        {/* Scrubber dot */}
+        <div
+          className={`absolute -translate-x-1/2 rounded-full bg-white shadow-lg transition-all duration-100 ${
+            dragging ? "w-4 h-4" : "w-3.5 h-3.5"
+          }`}
+          style={{
+            left: `${progress * 100}%`,
+            boxShadow: `0 0 12px ${phaseColors[phaseIdx]}60, 0 0 0 3px ${phaseColors[phaseIdx]}20`,
+          }}
+        />
+      </div>
+
+      {/* Phase labels below track */}
+      <div className="flex justify-between mt-0.5 px-0">
         {phasePositions.map(({ name, pos }) => {
           const isActive = name === currentPhase;
+          const i = phases.indexOf(name as Phase);
           return (
             <button
               key={name}
-              className={`text-[11px] font-medium transition-colors cursor-pointer ${
-                isActive ? "text-neon font-bold" : "text-gray-400"
+              className={`text-[8px] font-medium transition-all duration-200 cursor-pointer px-0.5 ${
+                isActive
+                  ? "text-white/90 font-semibold"
+                  : "text-white/20 hover:text-white/40"
               }`}
               onClick={() => onProgressChange(pos)}
+              style={{ color: isActive ? phaseColors[i] : undefined }}
             >
               {PHASE_LABELS[name as Phase]}
             </button>
           );
         })}
-      </div>
-
-      {/* Track */}
-      <div
-        ref={trackRef}
-        className="relative w-full h-8 flex items-center cursor-pointer"
-        onMouseDown={handleMouseDown}
-        onTouchStart={handleTouchStart}
-      >
-        {/* Track line */}
-        <div className="absolute left-0 right-0 h-0.5 bg-gray-600 rounded" />
-        {/* Active track fill */}
-        <div
-          className="absolute left-0 h-0.5 bg-neon rounded transition-[width] duration-75"
-          style={{ width: `${progress * 100}%` }}
-        />
-        {/* Phase tick dots */}
-        {phasePositions.map(({ name, pos }) => (
-          <div
-            key={name}
-            className={`absolute w-2 h-2 rounded-full -translate-x-1/2 ${
-              pos <= progress ? "bg-neon" : "bg-gray-500"
-            }`}
-            style={{ left: `${pos * 100}%` }}
-          />
-        ))}
-        {/* Scrubber dot */}
-        <div
-          className={`absolute w-5 h-5 rounded-full bg-neon -translate-x-1/2 shadow-lg shadow-neon/30 transition-[width,height] ${
-            dragging ? "w-6 h-6" : ""
-          }`}
-          style={{ left: `${progress * 100}%` }}
-        />
       </div>
     </div>
   );
