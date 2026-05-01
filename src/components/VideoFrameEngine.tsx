@@ -221,32 +221,16 @@ export default function VideoFrameEngine({
       <canvas
         ref={canvasRef}
         className="w-full h-full rounded-xl object-cover"
-        style={{ border: "2px solid #C8F000" }}
+        style={{ pointerEvents: "none" }}
       />
 
-      {/* Label badge */}
-      <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/80 rounded-full px-3 py-1 text-xs font-medium z-10">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-          <circle cx="12" cy="8" r="4" />
-          <path d="M4 21v-2a6 6 0 016-6h4a6 6 0 016 6v2" />
-        </svg>
-        <span>{label}</span>
-      </div>
-
-      {/* Flip indicator */}
-      {flipped && (
-        <div className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 text-[10px] text-neon z-10">
-          Mirrored
-        </div>
-      )}
-
       {/* Frame info */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2 z-10">
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-1.5 z-10 pointer-events-none">
         <div className="flex justify-between text-[10px]">
-          <span className="text-gray-300">
+          <span className="text-gray-400">
             Frame {currentFrame}/{totalFrames}
           </span>
-          <span className="text-neon font-medium">{activePhase}</span>
+          <span className="text-neon/70 font-medium">{activePhase}</span>
         </div>
       </div>
 

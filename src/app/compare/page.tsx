@@ -134,8 +134,11 @@ export default function ComparePage() {
         {/* Pro panel */}
         <div
           onClick={() => !syncLocked && setSelectedVideo("pro")}
-          className="flex-1 min-h-0 relative cursor-pointer transition-all duration-300"
-          style={{ opacity: proDimmed ? 0.4 : 1 }}
+          className="flex-1 min-h-0 relative cursor-pointer transition-all duration-300 rounded-lg overflow-hidden"
+          style={{
+            opacity: proDimmed ? 0.4 : 1,
+            border: !syncLocked && selectedVideo === "pro" ? "2px solid #C8F000" : "1px solid rgba(255,255,255,0.06)",
+          }}
         >
           <VideoFrameEngine src={proSwing.src} fps={proSwing.fps} totalFrames={proSwing.totalFrames}
             phaseFrames={proPhaseMarkers} progress={activeProgress}
@@ -177,8 +180,11 @@ export default function ComparePage() {
         {/* Player panel */}
         <div
           onClick={() => !syncLocked && setSelectedVideo("player")}
-          className="flex-1 min-h-0 relative cursor-pointer transition-all duration-300"
-          style={{ opacity: playerDimmed ? 0.4 : 1 }}
+          className="flex-1 min-h-0 relative cursor-pointer transition-all duration-300 rounded-lg overflow-hidden"
+          style={{
+            opacity: playerDimmed ? 0.4 : 1,
+            border: !syncLocked && selectedVideo === "player" ? "2px solid #C8F000" : "1px solid rgba(255,255,255,0.06)",
+          }}
         >
           <VideoFrameEngine src={youthSwing.src} fps={youthSwing.fps} totalFrames={youthSwing.totalFrames}
             phaseFrames={playerPhaseMarkers} progress={activeProgress}
