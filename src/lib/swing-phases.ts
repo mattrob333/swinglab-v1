@@ -1,4 +1,4 @@
-// SwingLab Phase Model — from PRD Section 8
+// SwingLab Phase Model - from PRD Section 8
 
 export const PHASES = [
   "stance",
@@ -32,7 +32,7 @@ export const PHASE_DESCRIPTIONS: Record<Phase, string> = {
   finish: "Follow-through reaches finish position",
 };
 
-// Normalized positions along scrubber (0.0–1.0)
+// Normalized positions along scrubber (0.0-1.0)
 export const PHASE_POSITIONS: Record<Phase, number> = {
   stance: 0.0,
   load: 0.167,
@@ -115,7 +115,7 @@ export interface ComparisonSession {
 
 export const DEFAULT_PHASE_SET_VERSION = "v1_default_7_phase";
 
-// PRD Section 9.2 — Frame mapping algorithm
+// PRD Section 9.2 - Frame mapping algorithm
 export function frameForProgress(
   progress: number,
   phaseMarkers: Record<Phase, PhaseMarker>,

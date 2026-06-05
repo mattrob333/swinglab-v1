@@ -1,6 +1,12 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState, useMemo } from "react";
+import {
+  currentPhase,
+  frameForProgress,
+  frameTimeSeconds,
+  videoFrameCacheKey,
+} from "./video-frame-engine-utils";
 
 interface VideoFrameEngineProps {
   src: string;
@@ -15,60 +21,50 @@ interface VideoFrameEngineProps {
   onFrameUpdate?: (frameIndex: number, phaseName: string) => void;
 }
 
-// LRU cache for decoded frames
-const frameCache = new Map<number, ImageData>();
+// LRU cache for decoded frames. The key must include source/rendering options
+// because two players can request the same frame index from different videos.
+const frameCache = new Map<string, ImageData>();
 const MAX_CACHE = 60;
 
-function getCachedFrame(idx: number): ImageData | undefined {
-  return frameCache.get(idx);
+function getCachedFrame(key: string): ImageData | undefined {
+  return frameCache.get(key);
 }
 
-function setCachedFrame(idx: number, data: ImageData) {
+function setCachedFrame(key: string, data: ImageData) {
   if (frameCache.size >= MAX_CACHE) {
     const firstKey = frameCache.keys().next().value;
     if (firstKey !== undefined) frameCache.delete(firstKey);
   }
-  frameCache.set(idx, data);
+  frameCache.set(key, data);
 }
 
-function frameForProgress(
-  p: number,
-  phaseFrames: Record<string, number>,
-  phaseNames: string[],
-  phasePositions: Record<string, number>
-): number {
-  const progress = Math.max(0, Math.min(1, p));
-  for (let i = 0; i < phaseNames.length - 1; i++) {
-    const aName = phaseNames[i];
-    const bName = phaseNames[i + 1];
-    const aPos = phasePositions[aName];
-    const bPos = phasePositions[bName];
-    if (progress >= aPos && progress <= bPos) {
-      const local = (progress - aPos) / (bPos - aPos);
-      const aFrame = phaseFrames[aName];
-      const bFrame = phaseFrames[bName];
-      return Math.round(aFrame + local * (bFrame - aFrame));
-    }
+function seekVideo(
+  video: HTMLVideoElement,
+  timeSec: number,
+  toleranceSec: number
+): Promise<void> {
+  if (Math.abs(video.currentTime - timeSec) <= toleranceSec) {
+    return Promise.resolve();
   }
-  return phaseFrames[phaseNames[phaseNames.length - 1]];
-}
 
-function currentPhase(
-  p: number,
-  phaseNames: string[],
-  phasePositions: Record<string, number>
-): string {
-  const progress = Math.max(0, Math.min(1, p));
-  let closest = phaseNames[0];
-  let closestDist = Infinity;
-  for (const name of phaseNames) {
-    const dist = Math.abs(progress - phasePositions[name]);
-    if (dist < closestDist) {
-      closestDist = dist;
-      closest = name;
-    }
-  }
-  return closest;
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      video.removeEventListener("seeked", handleSeeked);
+      video.removeEventListener("error", handleError);
+    };
+    const handleSeeked = () => {
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error("Failed to seek video"));
+    };
+
+    video.addEventListener("seeked", handleSeeked, { once: true });
+    video.addEventListener("error", handleError, { once: true });
+    video.currentTime = timeSec;
+  });
 }
 
 export default function VideoFrameEngine({
@@ -89,6 +85,8 @@ export default function VideoFrameEngine({
   const [currentFrame, setCurrentFrame] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const lastFrameRef = useRef(-1);
+  const renderRequestRef = useRef(0);
+  const onFrameUpdateRef = useRef(onFrameUpdate);
 
   const targetFrame = useMemo(
     () => frameForProgress(progress, phaseFrames, phaseNames, phasePositions),
@@ -100,42 +98,56 @@ export default function VideoFrameEngine({
     [progress, phaseNames, phasePositions]
   );
 
+  useEffect(() => {
+    lastFrameRef.current = -1;
+  }, [src, flipped]);
+
+  useEffect(() => {
+    onFrameUpdateRef.current = onFrameUpdate;
+  }, [onFrameUpdate]);
+
   // Render frame to canvas
   const renderFrame = useCallback(
-    (frameIndex: number) => {
+    async (frameIndex: number, requestId: number): Promise<boolean> => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      if (!video || !canvas) return;
+      if (!video || !canvas) return false;
 
       const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      if (!ctx) return false;
 
       // Check cache first
-      const cached = getCachedFrame(frameIndex);
+      const cacheKey = videoFrameCacheKey(src, flipped, frameIndex);
+      const cached = getCachedFrame(cacheKey);
       if (cached) {
-        ctx.save();
-        if (flipped) {
-          ctx.translate(canvas.width, 0);
-          ctx.scale(-1, 1);
-        }
+        if (requestId !== renderRequestRef.current) return false;
+        canvas.width = cached.width;
+        canvas.height = cached.height;
         ctx.putImageData(cached, 0, 0);
-        ctx.restore();
+        setError(null);
         setCurrentFrame(frameIndex);
-        return;
+        return true;
       }
 
       // Seek video to frame time
-      const timeMs = (frameIndex / fps) * 1000;
-      const timeSec = timeMs / 1000;
+      const timeSec = frameTimeSeconds(frameIndex, fps);
+      const toleranceSec = Math.min(0.001, 0.25 / fps);
 
-      if (Math.abs(video.currentTime - timeSec) > 0.05) {
-        video.currentTime = timeSec;
+      try {
+        await seekVideo(video, timeSec, toleranceSec);
+      } catch {
+        if (requestId === renderRequestRef.current) {
+          setError("Failed to seek video");
+        }
+        return false;
       }
+      if (requestId !== renderRequestRef.current) return false;
 
       // Draw current video frame to canvas
       const vw = video.videoWidth;
       const vh = video.videoHeight;
       const size = Math.min(vw, vh);
+      if (size <= 0) return false;
 
       // Crop to center 1:1 square
       const sx = (vw - size) / 2;
@@ -158,14 +170,16 @@ export default function VideoFrameEngine({
       // Cache the frame data
       try {
         const imageData = ctx.getImageData(0, 0, size, size);
-        setCachedFrame(frameIndex, imageData);
+        setCachedFrame(cacheKey, imageData);
       } catch {
         // Cache miss is fine
       }
 
+      setError(null);
       setCurrentFrame(frameIndex);
+      return true;
     },
-    [fps, flipped]
+    [fps, flipped, src]
   );
 
   // Seek and render when target frame changes
@@ -175,25 +189,14 @@ export default function VideoFrameEngine({
     const frame = Math.max(0, Math.min(targetFrame, totalFrames - 1));
     if (frame === lastFrameRef.current) return;
     lastFrameRef.current = frame;
+    const requestId = renderRequestRef.current + 1;
+    renderRequestRef.current = requestId;
 
-    renderFrame(frame);
-    onFrameUpdate?.(frame, activePhase);
-
-    // Prefetch nearby frames
-    const prefetchRange = 8;
-    for (let i = -prefetchRange; i <= prefetchRange; i++) {
-      const pf = frame + i;
-      if (pf >= 0 && pf < totalFrames && !getCachedFrame(pf)) {
-        const video = videoRef.current;
-        if (!video) break;
-        const timeSec = (pf / fps) / 1000;
-        // Use requestIdleCallback to prefetch without blocking UI
-        requestIdleCallback(() => {
-          video.currentTime = timeSec;
-        });
-      }
-    }
-  }, [targetFrame, ready, renderFrame, activePhase, totalFrames, fps, onFrameUpdate]);
+    void renderFrame(frame, requestId).then((rendered) => {
+      if (!rendered || requestId !== renderRequestRef.current) return;
+      onFrameUpdateRef.current?.(frame, activePhase);
+    });
+  }, [targetFrame, ready, renderFrame, activePhase, totalFrames]);
 
   return (
     <div className="relative w-full" style={{ aspectRatio: "1/1" }}>

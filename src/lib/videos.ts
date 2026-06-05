@@ -12,15 +12,15 @@ export interface SwingVideoInfo {
   isPro: boolean;
   totalFrames: number;
   // Default phase frame estimates (will be refined by tag screen)
-  // These map the swing portion of the video — about 30-50% of total duration
+  // These map the swing portion of the video - about 30-50% of total duration
   defaultPhaseFrames: Record<string, number>;
 }
 
 export const PRO_SWINGS: SwingVideoInfo[] = [
   {
-    id: "jacjson-holiday",
-    label: "Jaclson Holiday",
-    src: "/videos/pro/Jaclson Holiday.mp4",
+    id: "jackson-holliday",
+    label: "Jackson Holliday",
+    src: "/videos/pro/Jackson Holliday.mp4",
     fps: 30,
     durationMs: 38220,
     width: 800,

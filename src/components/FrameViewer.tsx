@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback } from "react";
-import { PHASES, type Phase } from "@/lib/swing-phases";
+import { type Phase } from "@/lib/swing-phases";
 
 interface FrameViewerProps {
   label: "Pro" | "Player";
@@ -205,7 +205,7 @@ export default function FrameViewer({
     ctx.fillStyle = "#C8F000";
     ctx.font = "12px -apple-system, system-ui, sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(`${label} · Phase ${currentPhase}`, 10, size - 10);
+    ctx.fillText(`${label} - Phase ${currentPhase}`, 10, size - 10);
     ctx.textAlign = "right";
     ctx.fillStyle = "#888";
     ctx.font = "11px -apple-system, system-ui, sans-serif";

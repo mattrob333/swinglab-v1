@@ -8,17 +8,6 @@ import { PHASES, PHASE_POSITIONS, PHASE_LABELS, REQUIRED_PHASES, currentPhase, t
 // Mock frame count
 const TOTAL_FRAMES = 156;
 
-// Mock player phase frames (will be set by user, starting with defaults)
-const DEFAULT_PLAYER_PHASES: Record<Phase, number> = {
-  stance: 3,
-  load: 28,
-  launch: 41,
-  turn: 52,
-  contact: 66,
-  extension: 81,
-  finish: 112,
-};
-
 export default function TagSwingPage() {
   const router = useRouter();
   const [progress, setProgress] = useState(0);
@@ -59,18 +48,12 @@ export default function TagSwingPage() {
     [phaseMarkers]
   );
 
-  const allMarked = useMemo(
-    () => PHASES.every((p) => phaseMarkers[p] !== null),
-    [phaseMarkers]
-  );
-
   // Generate frame preview at current position
   const framePreviewStyle = useMemo(() => {
     // Simulate a frame preview with position-relative batter pose
     const progressInSwing = Math.max(0, Math.min(1, progress));
     const stanceY = 0.3;
     const contactY = 0.5;
-    const finishY = 0.2;
     const yPos = stanceY + (contactY - stanceY) * Math.min(1, progressInSwing * 2);
     
     // Bat angle changes with swing
@@ -163,7 +146,7 @@ export default function TagSwingPage() {
                 }`}
               >
                 {i + 1}. {PHASE_LABELS[phaseName]}
-                {marked && " ✓"}
+                {marked && " done"}
               </button>
             );
           })}

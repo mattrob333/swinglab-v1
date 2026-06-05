@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { POST } from "../src/app/api/uploads/route.ts";
 import UploadPage from "../src/app/upload/page.ts";
 import { uploadSwingVideo } from "../src/lib/upload.ts";
 
@@ -23,12 +24,16 @@ test("upload mock succeeds without network access", async () => {
   formData.set("swingVideo", file);
   formData.set("hitterName", "Maya Torres");
 
-  const calls: Array<{ pathname: string; file: File }> = [];
+  const calls: Array<{
+    pathname: string;
+    file: File;
+    options: { access: "public"; addRandomSuffix: true };
+  }> = [];
 
   const result = await uploadSwingVideo(formData, {
     userId: "user_test_123",
-    put: async (pathname, blob) => {
-      calls.push({ pathname, file: blob as File });
+    put: async (pathname, blob, options) => {
+      calls.push({ pathname, file: blob as File, options });
 
       return {
         url: `https://blob.test/${pathname}`,
@@ -42,6 +47,24 @@ test("upload mock succeeds without network access", async () => {
   assert.equal(result.ok, true);
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.file.name, "front-toss.mp4");
+  assert.deepEqual(calls[0]?.options, {
+    access: "public",
+    addRandomSuffix: true,
+  });
   assert.equal(result.blobUrl, "https://blob.test/user_test_123/front-toss.mp4");
   assert.equal(result.hitterName, "Maya Torres");
+});
+
+test("upload API rejects Clerk session cookies without a verified user id", async () => {
+  const request = new Request("https://swinglab.test/api/uploads", {
+    method: "POST",
+    headers: {
+      cookie: "__session=test-session",
+    },
+  });
+
+  const response = await POST(request);
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: "Unauthorized" });
 });

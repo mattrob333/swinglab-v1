@@ -46,17 +46,11 @@ export function hasClerkSession(request: RequestLike) {
 }
 
 export function getUploadUserId(request: RequestLike) {
-  const explicitUserId = request.headers?.get("x-clerk-user-id");
+  const explicitUserId = request.headers?.get("x-clerk-user-id")?.trim();
 
   if (explicitUserId) {
     return explicitUserId;
   }
 
-  const session = readCookie(request, "__session");
-
-  if (!session) {
-    return undefined;
-  }
-
-  return "clerk-session";
+  return undefined;
 }

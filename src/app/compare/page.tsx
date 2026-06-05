@@ -7,35 +7,43 @@ import Scrubber from "@/components/Scrubber";
 import { PRO_SWINGS, YOUTH_SWINGS, type SwingVideoInfo } from "@/lib/videos";
 import { PHASES, PHASE_POSITIONS, PHASE_LABELS, type Phase } from "@/lib/swing-phases";
 
-function PhasePill({ phase, marked, isNext, onClick }: {
-  phase: string;
+type CompareSide = "pro" | "player";
+type PendingOverwrite = { side: CompareSide; phase: Phase } | null;
+
+function PhasePill({ phase, marked, isNext, overwritePending, onClick }: {
+  phase: Phase;
   marked: boolean;
   isNext: boolean;
+  overwritePending: boolean;
   onClick: () => void;
 }) {
   // Determine color based on phase number
-  const idx = PHASES.indexOf(phase as Phase);
+  const idx = PHASES.indexOf(phase);
   const colors = ["#7170ff","#5e6ad2","#10b981","#27a644","#f59e0b","#f97316","#ef4444"];
   const color = colors[idx];
 
   return (
     <button
       onClick={onClick}
-      className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-200
-        ${marked
+      aria-pressed={marked}
+      aria-label={`${marked ? "Replace" : "Mark"} ${PHASE_LABELS[phase]} phase`}
+      className={`flex-shrink-0 min-h-11 px-3.5 py-2 rounded-full text-[12px] font-semibold transition-all duration-200
+        ${overwritePending
+          ? "text-amber-100 border border-amber-300/70 bg-amber-300/15"
+          : marked
           ? "text-white shadow-lg"
           : isNext
-            ? "text-white/80 border border-white/20 bg-white/5"
+            ? "text-white/90 border border-white/25 bg-white/[0.08]"
             : "text-white/30 border border-white/5 bg-transparent"
         }
       `}
       style={{
-        backgroundColor: marked ? color : "transparent",
-        borderColor: marked ? color : isNext ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.05)",
-        boxShadow: marked ? `0 0 16px ${color}40` : "none",
+        backgroundColor: overwritePending ? undefined : marked ? color : "transparent",
+        borderColor: overwritePending ? undefined : marked ? color : isNext ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.05)",
+        boxShadow: overwritePending ? "0 0 14px rgba(252, 211, 77, 0.18)" : marked ? `0 0 16px ${color}40` : "none",
       }}
     >
-      <span className="flex items-center gap-1.5">
+      <span className="flex items-center gap-1.5 whitespace-nowrap">
         {marked ? (
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
@@ -43,7 +51,7 @@ function PhasePill({ phase, marked, isNext, onClick }: {
         ) : (
           <span className="text-[9px] font-mono opacity-40">{String(idx + 1).padStart(2, "0")}</span>
         )}
-        {PHASE_LABELS[phase as Phase]}
+        {PHASE_LABELS[phase]}
       </span>
     </button>
   );
@@ -57,10 +65,12 @@ export default function ComparePage() {
 
   // Core state
   const [syncLocked, setSyncLocked] = useState(false);
-  const [selectedVideo, setSelectedVideo] = useState<"pro" | "player">("pro");
+  const [selectedVideo, setSelectedVideo] = useState<CompareSide>("pro");
   const [sharedProgress, setSharedProgress] = useState(0);
   const [proProgress, setProProgress] = useState(0);
   const [playerProgress, setPlayerProgress] = useState(0);
+  const [proCurrentFrame, setProCurrentFrame] = useState(0);
+  const [playerCurrentFrame, setPlayerCurrentFrame] = useState(0);
 
   // Video selections
   const [proId, setProId] = useState(PRO_SWINGS[0].id);
@@ -69,24 +79,35 @@ export default function ComparePage() {
   const [flipYouth, setFlipYouth] = useState(false);
 
   // Phase markers
-  const initMarkers = () => Object.fromEntries(PHASES.map((p) => [p, 0]));
-  const [proPhaseMarkers, setProPhaseMarkers] = useState<Record<string, number>>(initMarkers());
-  const [playerPhaseMarkers, setPlayerPhaseMarkers] = useState<Record<string, number>>(initMarkers());
+  const initMarkers = (swing: SwingVideoInfo) => ({ ...swing.defaultPhaseFrames });
+  const [proPhaseMarkers, setProPhaseMarkers] = useState<Record<string, number>>(
+    () => initMarkers(PRO_SWINGS[0])
+  );
+  const [playerPhaseMarkers, setPlayerPhaseMarkers] = useState<Record<string, number>>(
+    () => initMarkers(YOUTH_SWINGS[0])
+  );
   const [proMarked, setProMarked] = useState<Set<string>>(new Set());
   const [playerMarked, setPlayerMarked] = useState<Set<string>>(new Set());
+  const [pendingOverwrite, setPendingOverwrite] = useState<PendingOverwrite>(null);
 
-  const selectSwing = useCallback((id: string, side: "pro" | "player") => {
+  const selectSwing = useCallback((id: string, side: CompareSide) => {
     if (side === "pro") {
+      const nextSwing = PRO_SWINGS.find((s) => s.id === id) || PRO_SWINGS[0];
       setProId(id);
-      setProPhaseMarkers(initMarkers());
+      setProPhaseMarkers(initMarkers(nextSwing));
       setProMarked(new Set());
+      setPendingOverwrite(null);
       setProProgress(0);
+      setProCurrentFrame(nextSwing.defaultPhaseFrames.stance ?? 0);
       setShowProSelector(false);
     } else {
+      const nextSwing = YOUTH_SWINGS.find((s) => s.id === id) || YOUTH_SWINGS[0];
       setYouthId(id);
-      setPlayerPhaseMarkers(initMarkers());
+      setPlayerPhaseMarkers(initMarkers(nextSwing));
       setPlayerMarked(new Set());
+      setPendingOverwrite(null);
       setPlayerProgress(0);
+      setPlayerCurrentFrame(nextSwing.defaultPhaseFrames.stance ?? 0);
       setShowYouthSelector(false);
     }
   }, []);
@@ -114,16 +135,27 @@ export default function ComparePage() {
     else setPlayerProgress(p);
   }, [syncLocked, selectedVideo]);
 
-  const markPhase = useCallback((phaseName: string) => {
-    const prog = selectedVideo === "pro" ? proProgress : playerProgress;
+  const markPhase = useCallback((phaseName: Phase) => {
+    const activeMarked = selectedVideo === "pro" ? proMarked : playerMarked;
+    if (activeMarked.has(phaseName)) {
+      const isConfirming =
+        pendingOverwrite?.side === selectedVideo && pendingOverwrite.phase === phaseName;
+      if (!isConfirming) {
+        setPendingOverwrite({ side: selectedVideo, phase: phaseName });
+        return;
+      }
+    }
+
+    const frame = selectedVideo === "pro" ? proCurrentFrame : playerCurrentFrame;
     if (selectedVideo === "pro") {
-      setProPhaseMarkers(p => ({ ...p, [phaseName]: prog }));
+      setProPhaseMarkers(p => ({ ...p, [phaseName]: frame }));
       setProMarked(p => new Set(p).add(phaseName));
     } else {
-      setPlayerPhaseMarkers(p => ({ ...p, [phaseName]: prog }));
+      setPlayerPhaseMarkers(p => ({ ...p, [phaseName]: frame }));
       setPlayerMarked(p => new Set(p).add(phaseName));
     }
-  }, [selectedVideo, proProgress, playerProgress]);
+    setPendingOverwrite(null);
+  }, [selectedVideo, proCurrentFrame, playerCurrentFrame, proMarked, playerMarked, pendingOverwrite]);
 
   const proCount = proMarked.size;
   const playerCount = playerMarked.size;
@@ -144,11 +176,29 @@ export default function ComparePage() {
     if (el) el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
   }, [nextUnmarked, syncLocked]);
 
+  const activeLabel = selectedVideo === "pro" ? "Pro" : "Player";
+  const activePendingOverwrite = pendingOverwrite?.side === selectedVideo ? pendingOverwrite : null;
+  const statusText = activePendingOverwrite
+    ? `Tap ${PHASE_LABELS[activePendingOverwrite.phase]} again to replace ${activeLabel} marker`
+    : syncLocked
+      ? "Synced compare: scrub both swings by matching phases"
+      : nextUnmarked
+        ? `Tagging ${activeLabel}: mark ${PHASE_LABELS[nextUnmarked]}`
+        : selectedVideo === "pro" && playerCount < 7
+          ? "Pro complete. Tap Player to tag their phases"
+          : selectedVideo === "player" && proCount < 7
+            ? "Player complete. Tap Pro to tag their phases"
+            : "Both swings tagged. Lock sync when ready";
+
   return (
     <div className="flex flex-col h-dvh bg-[#08090a] text-[#f7f8f8] select-none">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.05]">
-        <button onClick={() => router.push("/")} className="text-white/60 hover:text-white transition-colors">
+        <button
+          onClick={() => router.push("/")}
+          className="min-h-11 min-w-11 -ml-2 grid place-items-center text-white/60 hover:text-white transition-colors"
+          aria-label="Back"
+        >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
@@ -159,11 +209,11 @@ export default function ComparePage() {
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowProSelector(true)}
-            className="text-[11px] font-medium text-white/50 bg-white/[0.03] border border-white/[0.08] rounded-lg px-2.5 py-1.5 hover:bg-white/[0.06] hover:text-white/80 transition-all">
+            className="min-h-11 text-[12px] font-medium text-white/70 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 hover:bg-white/[0.08] hover:text-white transition-all">
             Pro
           </button>
-          <span className="text-white/[0.08] text-xs">·</span>
-          <button className="text-white/30 hover:text-white/60 transition-colors">
+          <span className="text-white/[0.08] text-xs">|</span>
+          <button className="min-h-11 min-w-11 grid place-items-center text-white/40 hover:text-white/70 transition-colors" aria-label="More options">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
             </svg>
@@ -190,19 +240,13 @@ export default function ComparePage() {
             phasePositions={PHASE_POSITIONS as unknown as Record<string, number>}
             flipped={flipPro}
             label="Pro"
+            onFrameUpdate={(frame) => setProCurrentFrame(frame)}
           />
-          {/* Glass overlay for labels */}
-          <div className="absolute top-0 left-0 right-0 flex items-start justify-between p-2 pointer-events-none">
-            <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-[6px] rounded-full px-2.5 py-1 border border-white/[0.06]">
-              <span className="text-[10px] font-medium text-white/80">{proSwing.label}</span>
-              <span className={`text-[9px] ${flipPro ? "text-[#C8F000]" : "text-white/40"}`}>
-                {proSwing.handedness}
-                {flipPro ? " →" : ""}
-              </span>
-            </div>
+          <div className="absolute top-1.5 right-1.5 flex items-start pointer-events-none">
             <button
               onClick={(e) => { e.stopPropagation(); setFlipPro(!flipPro); }}
-              className="pointer-events-auto bg-black/40 backdrop-blur-[6px] rounded-full px-2 py-1 border border-white/[0.06] text-[9px] text-white/50 hover:text-white/80 transition-colors"
+              className="pointer-events-auto min-h-10 rounded-full bg-black/35 backdrop-blur-[6px] px-3 text-[11px] font-medium text-white/60 border border-white/[0.08] hover:bg-black/55 hover:text-white/90 transition-colors"
+              aria-pressed={flipPro}
             >
               Flip
             </button>
@@ -226,18 +270,13 @@ export default function ComparePage() {
             phasePositions={PHASE_POSITIONS as unknown as Record<string, number>}
             flipped={flipYouth}
             label="Player"
+            onFrameUpdate={(frame) => setPlayerCurrentFrame(frame)}
           />
-          <div className="absolute top-0 left-0 right-0 flex items-start justify-between p-2 pointer-events-none">
-            <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-[6px] rounded-full px-2.5 py-1 border border-white/[0.06]">
-              <span className="text-[10px] font-medium text-white/80">{youthSwing.label}</span>
-              <span className={`text-[9px] ${flipYouth ? "text-[#C8F000]" : "text-white/40"}`}>
-                {youthSwing.handedness}
-                {flipYouth ? " →" : ""}
-              </span>
-            </div>
+          <div className="absolute top-1.5 right-1.5 flex items-start pointer-events-none">
             <button
               onClick={(e) => { e.stopPropagation(); setFlipYouth(!flipYouth); }}
-              className="pointer-events-auto bg-black/40 backdrop-blur-[6px] rounded-full px-2 py-1 border border-white/[0.06] text-[9px] text-white/50 hover:text-white/80 transition-colors"
+              className="pointer-events-auto min-h-10 rounded-full bg-black/35 backdrop-blur-[6px] px-3 text-[11px] font-medium text-white/60 border border-white/[0.08] hover:bg-black/55 hover:text-white/90 transition-colors"
+              aria-pressed={flipYouth}
             >
               Flip
             </button>
@@ -247,6 +286,34 @@ export default function ComparePage() {
 
       {/* Bottom panel */}
       <div className="border-t border-white/[0.05] px-3 pt-2 pb-0">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-[12px] font-semibold text-white/80">
+              {syncLocked ? "Synced compare" : `Tagging ${activeLabel}`}
+            </p>
+            <p className="truncate text-[10px] text-white/35">
+              {selectedVideo === "pro" ? proSwing.label : youthSwing.label}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1 rounded-full border border-white/[0.07] bg-white/[0.03] p-1">
+            {(["pro", "player"] as const).map((side) => (
+              <button
+                key={side}
+                onClick={() => !syncLocked && setSelectedVideo(side)}
+                disabled={syncLocked}
+                className={`min-h-9 rounded-full px-3 text-[11px] font-semibold transition ${
+                  selectedVideo === side && !syncLocked
+                    ? "bg-[#C8F000] text-black"
+                    : "text-white/45 hover:text-white/80 disabled:hover:text-white/45"
+                }`}
+                aria-pressed={selectedVideo === side && !syncLocked}
+              >
+                {side === "pro" ? "Pro" : "Player"}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Phase buttons strip (tagging mode) */}
         {!syncLocked && (
           <div className="mb-2">
@@ -254,12 +321,15 @@ export default function ComparePage() {
               {PHASES.map((phaseName) => {
                 const marked = (selectedVideo === "pro" ? proMarked : playerMarked).has(phaseName);
                 const isNext = phaseName === nextUnmarked;
+                const overwritePending =
+                  pendingOverwrite?.side === selectedVideo && pendingOverwrite.phase === phaseName;
                 return (
                   <div key={phaseName} data-phase={phaseName}>
                     <PhasePill
                       phase={phaseName}
                       marked={marked}
                       isNext={isNext}
+                      overwritePending={overwritePending}
                       onClick={() => markPhase(phaseName)}
                     />
                   </div>
@@ -267,13 +337,9 @@ export default function ComparePage() {
               })}
             </div>
             {/* Progress */}
-            <div className="flex items-center justify-between px-0.5">
-              <span className="text-[9px] text-white/20 font-medium tracking-wider uppercase">
-                {nextUnmarked
-                  ? `Mark ${PHASE_LABELS[nextUnmarked]} on ${selectedVideo === "pro" ? "Pro" : "Player"}`
-                  : selectedVideo === "pro" && playerCount < 7
-                    ? "Tap Player to mark"
-                    : "Ready"}
+            <div className="flex items-center justify-between gap-3 px-0.5">
+              <span className={`min-w-0 flex-1 truncate text-[10px] font-medium ${activePendingOverwrite ? "text-amber-200" : "text-white/35"}`}>
+                {statusText}
               </span>
               <div className="flex items-center gap-3 text-[10px]">
                 <span className={selectedVideo === "pro" ? "text-white/80" : "text-white/30"}>
@@ -287,18 +353,27 @@ export default function ComparePage() {
           </div>
         )}
 
+        {syncLocked && (
+          <div className="mb-2 rounded-md border border-white/[0.06] bg-white/[0.03] px-3 py-2">
+            <p className="text-[11px] font-medium text-white/70">{statusText}</p>
+          </div>
+        )}
+
         {/* Controls row */}
         <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
+          <div className="min-w-0 flex items-center gap-2">
             <button
               onClick={() => setShowYouthSelector(true)}
-              className="text-[10px] text-white/30 hover:text-white/60 transition-colors flex items-center gap-1"
+              className="min-h-10 rounded-full pr-3 text-[11px] text-white/45 hover:text-white/75 transition-colors flex items-center gap-1"
             >
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M17 1l4 4-4 4" /><path d="M3 5h18" /><path d="M7 23l-4-4 4-4" /><path d="M21 19H3" />
               </svg>
               Player
             </button>
+            <span className="hidden min-w-0 truncate text-[10px] text-white/25 sm:block">
+              {statusText}
+            </span>
           </div>
 
           {/* Phase sync toggle */}
@@ -307,7 +382,9 @@ export default function ComparePage() {
               if (syncLocked) { setSyncLocked(false); setSelectedVideo("pro"); }
               else if (all7OnBoth) setSyncLocked(true);
             }}
-            className={`flex items-center gap-1.5 text-[10px] font-medium rounded-full px-3 py-1 transition-all ${
+            aria-pressed={syncLocked}
+            aria-label={syncLocked ? "Unlock phase sync" : all7OnBoth ? "Lock phase sync" : `Finish tagging both swings before locking sync`}
+            className={`min-h-11 flex items-center gap-1.5 text-[12px] font-semibold rounded-full px-4 transition-all ${
               syncLocked
                 ? "bg-[#C8F000]/10 text-[#C8F000] border border-[#C8F000]/30"
                 : all7OnBoth
@@ -319,7 +396,7 @@ export default function ComparePage() {
               <rect x="3" y="11" width="18" height="11" rx="2" />
               <path d={syncLocked ? "M7 11V7a5 5 0 0110 0v4" : "M8 11V7a4 4 0 118 0v4"} />
             </svg>
-            {syncLocked ? "Synced" : all7OnBoth ? "Lock" : "Tag"}
+            {syncLocked ? "Synced" : all7OnBoth ? "Lock Sync" : "Tag First"}
           </button>
         </div>
 
@@ -368,7 +445,7 @@ function SwingSelector({ swings, title, activeId, onSelect, onClose }: {
             </div>
             <div className="text-left flex-1 min-w-0">
               <p className="text-sm font-medium text-white/80 truncate">{s.label}</p>
-              <p className="text-[10px] text-white/30">{s.handedness === "R" ? "Right" : "Left"} · {(s.durationMs / 1000).toFixed(1)}s · {s.fps}fps</p>
+              <p className="text-[10px] text-white/30">{s.handedness === "R" ? "Right" : "Left"} | {(s.durationMs / 1000).toFixed(1)}s | {s.fps}fps</p>
             </div>
             {s.id === activeId && <div className="w-1.5 h-1.5 rounded-full bg-[#C8F000] flex-shrink-0" />}
           </button>

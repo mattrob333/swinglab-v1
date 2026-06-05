@@ -4,10 +4,9 @@ import { PHASE_LABELS, type Phase } from "@/lib/swing-phases";
 
 interface PhaseLabelProps {
   phase: Phase;
-  isActive?: boolean;
 }
 
-export default function PhaseLabel({ phase, isActive = true }: PhaseLabelProps) {
+export default function PhaseLabel({ phase }: PhaseLabelProps) {
   return (
     <div className="flex items-center gap-3 w-full px-5 py-2">
       <div className="flex-1 h-px bg-neon/40" />

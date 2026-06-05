@@ -6,10 +6,22 @@ import { useRouter } from "next/navigation";
 export default function QuickCapturePage() {
   const router = useRouter();
   const [recording, setRecording] = useState(false);
-  const [recorded, setRecorded] = useState(false);
   const [timer, setTimer] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [cameraFacing, setCameraFacing] = useState<"back" | "front">("back");
+
+  const stopRecording = useCallback(() => {
+    setRecording(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setTimer(0);
+    // Simulate processing then go to tag screen
+    setTimeout(() => {
+      router.push("/tag");
+    }, 500);
+  }, [router]);
 
   const startRecording = useCallback(() => {
     setRecording(true);
@@ -23,17 +35,7 @@ export default function QuickCapturePage() {
         return t + 0.1;
       });
     }, 100);
-  }, []);
-
-  const stopRecording = useCallback(() => {
-    setRecording(false);
-    if (timerRef.current) clearInterval(timerRef.current);
-    setTimer(0);
-    // Simulate processing then go to tag screen
-    setTimeout(() => {
-      router.push("/tag");
-    }, 500);
-  }, [router]);
+  }, [stopRecording]);
 
   const flipCamera = useCallback(() => {
     setCameraFacing((f) => (f === "back" ? "front" : "back"));

@@ -10,7 +10,7 @@ export type BlobPut = (
   file: File,
   options: {
     access: "public";
-    addRandomSuffix: false;
+    addRandomSuffix: true;
   },
 ) => Promise<BlobPutResult>;
 
@@ -81,7 +81,7 @@ export async function uploadSwingVideo(
   const put = dependencies.put ?? putWithVercelBlob;
   const blob = await put(pathname, file, {
     access: "public",
-    addRandomSuffix: false,
+    addRandomSuffix: true,
   });
 
   return {
