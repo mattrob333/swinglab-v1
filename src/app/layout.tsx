@@ -1,9 +1,21 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { TabBar } from "@/components/shell/TabBar";
 
 export const metadata: Metadata = {
   title: "SwingLab",
-  description: "Baseball swing capture and synced pro comparison",
+  description: "Record a swing and compare it with a pro, frame by frame",
+  applicationName: "SwingLab",
+  appleWebApp: { capable: true, title: "SwingLab", statusBarStyle: "black-translucent" },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#08090a",
 };
 
 export default function RootLayout({
@@ -13,12 +25,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full antialiased">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-      </head>
-      <body className="min-h-full flex flex-col bg-[#08090a] text-[#f7f8f8] font-sans">{children}</body>
+      <body className="flex h-full flex-col overflow-hidden bg-bg text-[#f7f8f8]">
+        <main className="relative min-h-0 flex-1">{children}</main>
+        <TabBar />
+      </body>
     </html>
   );
 }
