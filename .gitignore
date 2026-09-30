@@ -40,3 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .codex
+
+# userflow red-team runs (screenshots, browser profiles)
+.userflow-redteam/
+# playwright
+/test-results/
+/playwright-report/
