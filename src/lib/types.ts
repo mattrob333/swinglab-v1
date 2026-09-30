@@ -89,3 +89,64 @@ export interface CompareState {
   linked: boolean;
   layout: "stacked" | "side";
 }
+
+// ---------------------------------------------------------------------------
+// AI analysis (phase 2). Analyses are generated server-side from snapshots and
+// the coach's notes, then cached on the device like everything else.
+
+/** Which model family produced an analysis. "opus" = Claude Opus 5.5, "sol" = GPT-6.1 Sol. */
+export type AnalysisModel = "opus" | "sol";
+
+export type SwingPhase = "stance" | "load" | "stride" | "launch" | "contact" | "extension" | "finish" | "other";
+
+export interface SwingIssue {
+  title: string;
+  detail: string;
+  phase: SwingPhase;
+  severity: "high" | "medium" | "low";
+  /** Snapshot ids that show this issue. */
+  snapshotIds: string[];
+}
+
+export interface SwingDrill {
+  name: string;
+  why: string;
+  howTo: string;
+  reps: string;
+}
+
+export interface DrillVideo {
+  title: string;
+  url: string;
+  channel: string;
+  why: string;
+}
+
+/** Structured coaching report. The shape both models must return. */
+export interface SwingAnalysisResult {
+  summary: string;
+  strengths: string[];
+  issues: SwingIssue[];
+  drills: SwingDrill[];
+  /** Short verbal cues the hitter can take into the next at-bat. */
+  cues: string[];
+  nextFocus: string;
+}
+
+export interface Analysis {
+  id: string;
+  createdAt: string;
+  snapshotIds: string[];
+  model: AnalysisModel;
+  /** Exact model id reported by the API, e.g. "claude-opus-5-5". */
+  modelId: string;
+  coachNotes: string;
+  /** Transcript of a voice note recorded for this analysis, if any. */
+  transcript: string;
+  result: SwingAnalysisResult | null;
+  drillVideos: DrillVideo[];
+  status: "pending" | "done" | "error";
+  error: string | null;
+  ownerId: string | null;
+  syncState: SyncState;
+}

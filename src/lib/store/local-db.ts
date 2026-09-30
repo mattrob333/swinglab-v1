@@ -5,31 +5,38 @@
 // mirrors it to Supabase when signed in and online.
 
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import type { Clip, ClipBlobVariant, ClipKind, Snapshot } from "@/lib/types";
+import type { Analysis, Clip, ClipBlobVariant, ClipKind, Snapshot } from "@/lib/types";
 
 interface SwingLabDB extends DBSchema {
   clips: { key: string; value: Clip; indexes: { byKind: ClipKind; byUpdated: string } };
   blobs: { key: string; value: Blob };
   snapshots: { key: string; value: Snapshot; indexes: { byCreated: string } };
   snapshotImages: { key: string; value: Blob };
+  analyses: { key: string; value: Analysis; indexes: { byCreated: string } };
 }
 
 const DB_NAME = "swinglab-2026";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<SwingLabDB>> | null = null;
 
 function db() {
   if (!dbPromise) {
     dbPromise = openDB<SwingLabDB>(DB_NAME, DB_VERSION, {
-      upgrade(database) {
-        const clips = database.createObjectStore("clips", { keyPath: "id" });
-        clips.createIndex("byKind", "kind");
-        clips.createIndex("byUpdated", "updatedAt");
-        database.createObjectStore("blobs");
-        const snaps = database.createObjectStore("snapshots", { keyPath: "id" });
-        snaps.createIndex("byCreated", "createdAt");
-        database.createObjectStore("snapshotImages");
+      upgrade(database, oldVersion) {
+        if (oldVersion < 1) {
+          const clips = database.createObjectStore("clips", { keyPath: "id" });
+          clips.createIndex("byKind", "kind");
+          clips.createIndex("byUpdated", "updatedAt");
+          database.createObjectStore("blobs");
+          const snaps = database.createObjectStore("snapshots", { keyPath: "id" });
+          snaps.createIndex("byCreated", "createdAt");
+          database.createObjectStore("snapshotImages");
+        }
+        if (oldVersion < 2) {
+          const analyses = database.createObjectStore("analyses", { keyPath: "id" });
+          analyses.createIndex("byCreated", "createdAt");
+        }
       },
     });
   }
@@ -150,5 +157,29 @@ export async function deleteSnapshot(id: string): Promise<void> {
   await tx.objectStore("snapshots").delete(id);
   await tx.objectStore("snapshotImages").delete(id);
   await tx.done;
+  emit();
+}
+
+export async function listAnalyses(): Promise<Analysis[]> {
+  const all = await (await db()).getAll("analyses");
+  return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function getAnalysis(id: string): Promise<Analysis | undefined> {
+  return (await db()).get("analyses", id);
+}
+
+/** Analyses that include the given snapshot, newest first. */
+export async function listAnalysesForSnapshot(snapshotId: string): Promise<Analysis[]> {
+  return (await listAnalyses()).filter((a) => a.snapshotIds.includes(snapshotId));
+}
+
+export async function putAnalysis(analysis: Analysis): Promise<void> {
+  await (await db()).put("analyses", analysis);
+  emit();
+}
+
+export async function deleteAnalysis(id: string): Promise<void> {
+  await (await db()).delete("analyses", id);
   emit();
 }
