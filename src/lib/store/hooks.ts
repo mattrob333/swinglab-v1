@@ -29,15 +29,15 @@ export function useLocalQuery<T>(query: () => Promise<T>, deps: unknown[] = []):
 
 /** Object URL for a blob that is revoked when the blob changes or the component unmounts. */
 export function useObjectUrl(blob: Blob | undefined | null): string | null {
-  const [url, setUrl] = useState<string | null>(null);
+  // The URL is created in an effect (not during render) so it can be revoked
+  // on cleanup, including React's dev-mode double-invoke of effects.
+  const [entry, setEntry] = useState<{ blob: Blob; url: string } | null>(null);
   useEffect(() => {
-    if (!blob) {
-      setUrl(null);
-      return;
-    }
-    const u = URL.createObjectURL(blob);
-    setUrl(u);
-    return () => URL.revokeObjectURL(u);
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing with an external resource
+    setEntry({ blob, url });
+    return () => URL.revokeObjectURL(url);
   }, [blob]);
-  return url;
+  return entry && entry.blob === blob ? entry.url : null;
 }

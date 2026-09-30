@@ -10,6 +10,7 @@ import { ImportVideoButton } from "@/components/capture/ImportVideoButton";
 import { ClipCard } from "./ClipCard";
 import { ClipActionSheet } from "./ClipActionSheet";
 import { SampleClipsButton } from "./LibraryScreen";
+import { SettingsLink } from "@/app/settings/SettingsLink";
 
 const RECENT_LIMIT = 12;
 
@@ -33,12 +34,15 @@ export function HomeScreen() {
           <div className="text-xl font-extrabold tracking-tight">
             Swing<span className="text-neon">Lab</span>
           </div>
+          <div className="flex items-center gap-1">
           <Link href="/library" className="flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-medium text-muted">
             Library
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M9 6l6 6-6 6" />
             </svg>
           </Link>
+          <SettingsLink />
+          </div>
         </header>
 
         {/* Primary actions */}

@@ -3,6 +3,7 @@ import "./globals.css";
 import { TabBar } from "@/components/shell/TabBar";
 import { ServiceWorker } from "@/components/shell/ServiceWorker";
 import { SyncProvider } from "@/lib/sync/SyncProvider";
+import { JobsMount } from "@/components/capture/JobsMount";
 
 export const metadata: Metadata = {
   title: "SwingLab",
@@ -33,6 +34,7 @@ export default function RootLayout({
           <TabBar />
         </SyncProvider>
         <ServiceWorker />
+        <JobsMount />
       </body>
     </html>
   );
