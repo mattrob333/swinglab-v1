@@ -44,7 +44,7 @@ function Segmented<T extends string | number>({
           role="radio"
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
-          className={`min-h-10 flex-1 rounded-full px-3 text-sm font-semibold transition-colors ${
+          className={`min-h-10 flex-1 rounded-full px-2 text-sm font-semibold transition-colors ${
             value === o.value ? "bg-neon text-black" : "text-muted"
           }`}
         >
@@ -317,8 +317,35 @@ export function ClipEditor({ clipId }: { clipId: string }) {
       </div>
 
       {/* Details + primary action */}
-      <aside className="flex max-h-[45%] flex-col border-t border-line bg-surface landscape:max-h-none landscape:w-[340px] landscape:border-t-0 landscape:border-l">
+      <aside className="flex max-h-[40%] flex-col border-t border-line bg-surface landscape:max-h-none landscape:w-[340px] landscape:border-t-0 landscape:border-l">
         <div className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          <div className="grid grid-cols-2 gap-3 landscape:grid-cols-1">
+            <div>
+              <span className="mb-1.5 block text-xs font-medium text-muted">Batter</span>
+              <Segmented
+                label="Batter handedness"
+                value={draft.handedness}
+                onChange={(v) => patch({ handedness: v })}
+                options={[
+                  { value: "L", label: "Lefty" },
+                  { value: "R", label: "Righty" },
+                ]}
+                testId="handedness"
+              />
+            </div>
+
+            <div>
+              <span className="mb-1.5 block text-xs font-medium text-muted">Slo-mo</span>
+              <Segmented
+                label="Slo-mo factor"
+                value={draft.sloMoFactor}
+                onChange={(v) => patch({ sloMoFactor: v })}
+                options={SLOMO_CHOICES.map((n) => ({ value: n, label: `${n}×` }))}
+                testId="slomo"
+              />
+            </div>
+          </div>
+
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-muted">{isPro ? "Player" : "Title"}</span>
             <input
@@ -328,31 +355,6 @@ export function ClipEditor({ clipId }: { clipId: string }) {
               data-testid="clip-title"
             />
           </label>
-
-          <div>
-            <span className="mb-1.5 block text-xs font-medium text-muted">Batter</span>
-            <Segmented
-              label="Batter handedness"
-              value={draft.handedness}
-              onChange={(v) => patch({ handedness: v })}
-              options={[
-                { value: "L", label: "Lefty (L)" },
-                { value: "R", label: "Righty (R)" },
-              ]}
-              testId="handedness"
-            />
-          </div>
-
-          <div>
-            <span className="mb-1.5 block text-xs font-medium text-muted">Slo-mo (how much slower than real life this plays)</span>
-            <Segmented
-              label="Slo-mo factor"
-              value={draft.sloMoFactor}
-              onChange={(v) => patch({ sloMoFactor: v })}
-              options={SLOMO_CHOICES.map((n) => ({ value: n, label: `${n}×` }))}
-              testId="slomo"
-            />
-          </div>
 
           <div>
             <span className="mb-1.5 block text-xs font-medium text-muted">Camera view</span>

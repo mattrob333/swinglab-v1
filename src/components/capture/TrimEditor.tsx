@@ -200,7 +200,7 @@ export function TrimEditor({
       </div>
 
       {/* Fine nudges + readout */}
-      <div className="mt-3 flex items-center justify-between gap-2 px-1 text-xs">
+      <div className="mt-3 flex items-center justify-between gap-1 text-xs">
         <NudgePair label="Start" value={trim.start} onNudge={(f) => nudge("start", f)} testId="nudge-start" />
         <div className="text-center">
           <div className="text-[10px] uppercase tracking-wide text-muted">Length</div>
@@ -226,15 +226,15 @@ function NudgePair({
   testId: string;
 }) {
   const btn =
-    "flex h-11 w-11 items-center justify-center rounded-full bg-elevated text-white active:bg-white/15 disabled:opacity-40";
+    "flex h-11 w-10 shrink-0 items-center justify-center rounded-full bg-elevated text-white active:bg-white/15 disabled:opacity-40";
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-0.5">
       <button type="button" className={btn} onClick={() => onNudge(-1)} aria-label={`${label} back one frame`} data-testid={`${testId}-back`}>
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
           <path d="M15 6l-6 6 6 6" />
         </svg>
       </button>
-      <div className="min-w-14 text-center">
+      <div className="min-w-13 text-center">
         <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>
         <div className="font-mono text-sm tabular-nums">{formatSeconds(value)}</div>
       </div>

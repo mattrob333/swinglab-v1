@@ -275,7 +275,7 @@ export function BulkImport({ initialFiles, onClose }: { initialFiles?: File[]; o
             {allImported ? " · optimizing continues in the background" : ""}
           </span>
           {allImported ? (
-            <button type="button" onClick={onClose} className="min-h-12 rounded-full bg-neon px-6 font-semibold text-black">
+            <button type="button" onClick={onClose} className="min-h-12 rounded-full bg-neon px-6 font-semibold text-black" data-testid="bulk-done">
               Done
             </button>
           ) : (
