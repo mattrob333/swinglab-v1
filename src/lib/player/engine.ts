@@ -38,7 +38,7 @@ type VideoWithRvfc = HTMLVideoElement & {
 /** Frame rates learned this session, by clip id. */
 const learnedFps = new Map<string, number>();
 
-const PRESENT_TIMEOUT_MS = 120;
+const PRESENT_TIMEOUT_MS = 60;
 const STALL_TIMEOUT_MS = 2500;
 
 export class PlayerEngine {
@@ -312,7 +312,7 @@ export class PlayerEngine {
       this.presented = v.currentTime;
       this.framesPresented++;
     }
-    this.scheduler.onSeeked();
+    this.scheduler.onSeeked(v.currentTime, this.hasRvfc ? this.presented : null);
     if (this.scheduler.phase === "presenting") {
       if (this.presentTimer) clearTimeout(this.presentTimer);
       this.presentTimer = setTimeout(() => {

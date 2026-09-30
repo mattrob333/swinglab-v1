@@ -17,7 +17,7 @@ for (const pane of ["top", "bottom"] as Pane[]) {
       (document.querySelector(`[data-testid=pane-${p}-video]`) as any).__engine.resetStats();
     }, pane);
 
-    const moves = 120;
+    const moves = 60; // CDP touch moves are acked once per frame, so 60 moves ≈ 2s
     const x0 = box.x + box.width * 0.03;
     const x1 = box.x + box.width * 0.97;
     const t0 = Date.now();
@@ -56,6 +56,8 @@ for (const pane of ["top", "bottom"] as Pane[]) {
       distinctFramesPresented: e.stats.framesPresented,
       presentedPerSecond: +(e.stats.framesPresented / (dragMs / 1000)).toFixed(1),
       seekLatencyMs: { avg: +avg.toFixed(1), p95: +p95.toFixed(1), max: +e.stats.maxLatency.toFixed(1) },
+      presentTimeouts: e.stats.presentTimeouts,
+      sameFrameSeeks: e.stats.sameFrameSeeks,
       thumbMaxErrorPx: +thumbErrMax.toFixed(2),
     };
     console.log(`SCRUB_PERF ${JSON.stringify(report)}`);

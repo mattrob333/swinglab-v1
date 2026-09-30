@@ -168,3 +168,20 @@ test("snapshot saves to /snaps and reopens in compare", async ({ page }) => {
   await waitReady(page, "bottom");
   await expect.poll(async () => (await engineInfo(page, "bottom")).currentTime).toBeCloseTo(bt, 2);
 });
+
+test("play and slow-mo advance the video and stop inside the trim window", async ({ page }) => {
+  await page.getByTestId("scrubber-bottom-rate").click(); // 1x -> ½x
+  await expect(page.getByTestId("scrubber-bottom-rate")).toHaveText("½x");
+  const t0 = (await engineInfo(page, "bottom")).currentTime;
+  await page.getByTestId("scrubber-bottom-play").click();
+  await expect.poll(async () => (await engineInfo(page, "bottom")).playing).toBe(true);
+  await page.waitForTimeout(800);
+  const e = await engineInfo(page, "bottom");
+  await page.getByTestId("scrubber-bottom-play").click();
+  await expect.poll(async () => (await engineInfo(page, "bottom")).playing).toBe(false);
+  const advanced = e.currentTime - t0;
+  expect(advanced).toBeGreaterThan(0.15);
+  expect(advanced).toBeLessThan(0.8); // half speed
+  const v = await page.getByTestId("pane-bottom-video").evaluate((el) => (el as HTMLVideoElement).playbackRate);
+  expect(v).toBe(0.5);
+});

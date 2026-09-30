@@ -44,7 +44,15 @@ export interface EngineInfo {
   fps: number;
   trimStart: number;
   trimEnd: number;
-  stats: { requests: number; issued: number; maxLatency: number; latencies: number[]; framesPresented: number };
+  stats: {
+    requests: number;
+    issued: number;
+    maxLatency: number;
+    latencies: number[];
+    framesPresented: number;
+    presentTimeouts: number;
+    sameFrameSeeks: number;
+  };
 }
 
 export function engineInfo(page: Page, pane: Pane): Promise<EngineInfo> {

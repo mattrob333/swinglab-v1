@@ -42,7 +42,7 @@ export function SnapshotToast({ snapshotId, blob, onClose }: Props) {
 
   return (
     <div
-      className="absolute inset-x-2 bottom-2 z-30 mx-auto flex max-w-md flex-col gap-2 rounded-2xl border border-line bg-elevated/95 p-3 shadow-2xl backdrop-blur"
+      className="absolute inset-x-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-30 mx-auto flex max-w-md flex-col gap-2 rounded-2xl border border-line bg-elevated/95 p-3 shadow-2xl backdrop-blur"
       role="status"
       data-testid="snapshot-toast"
       onPointerDown={() => setEngaged(true)}

@@ -135,3 +135,16 @@ test("rapid drag: 120 requests over many seeks never exceed one in flight", () =
   assert.equal(maxInFlight, 1);
   assert.ok(media.seeks.length < 40, `too many seeks: ${media.seeks.length}`);
 });
+
+test("seek landing on the frame already on screen finishes without waiting for a new frame", () => {
+  const { media, s } = setup(true);
+  s.request(1.0);
+  s.request(2.0);
+  // Presented frame starts at 0.99; seeked to 1.0 (same 30fps frame).
+  s.onSeeked(1.0, 0.99);
+  assert.equal(s.stats.sameFrameSeeks, 1);
+  assert.deepEqual(media.seeks, [1.0, 2.0]);
+  // A different frame waits for presentation.
+  s.onSeeked(2.0, 0.99);
+  assert.equal(s.phase, "presenting");
+});

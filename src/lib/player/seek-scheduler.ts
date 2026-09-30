@@ -28,6 +28,10 @@ export interface SeekStats {
   latencies: number[];
   maxLatency: number;
   lastLatency: number;
+  /** Seeks that completed without a presented frame (same frame, or rVFC missed). */
+  presentTimeouts: number;
+  /** Seeks that landed on the frame already on screen. */
+  sameFrameSeeks: number;
 }
 
 export interface SchedulerOptions {
@@ -42,7 +46,7 @@ export class SeekScheduler {
   lastIssued: number | null = null;
   phase: SeekPhase = "idle";
   issuedAt = 0;
-  stats: SeekStats = { requests: 0, issued: 0, latencies: [], maxLatency: 0, lastLatency: 0 };
+  stats: SeekStats = { requests: 0, issued: 0, latencies: [], maxLatency: 0, lastLatency: 0, presentTimeouts: 0, sameFrameSeeks: 0 };
 
   private media: SeekableMedia;
   private opts: SchedulerOptions;
@@ -82,14 +86,24 @@ export class SeekScheduler {
     return true;
   }
 
-  /** The media element fired `seeked`. */
-  onSeeked(): void {
+  /**
+   * The media element fired `seeked`. `seekedTime` is currentTime after the
+   * seek and `presented` the media time of the frame already on screen: when
+   * the seek landed inside that frame no new frame will be presented (rVFC
+   * stays silent), so finish now instead of waiting for the fallback timeout.
+   */
+  onSeeked(seekedTime?: number, presented?: number | null): void {
     if (this.phase !== "seeking") return;
-    if (this.opts.waitForPresent) {
-      this.phase = "presenting";
-    } else {
+    if (!this.opts.waitForPresent) {
       this.finish();
+      return;
     }
+    if (seekedTime != null && presented != null && seekedTime >= presented - 1e-4 && seekedTime < presented + 0.98 / this.opts.fps()) {
+      this.stats.sameFrameSeeks++;
+      this.finish();
+      return;
+    }
+    this.phase = "presenting";
   }
 
   /** A frame was presented (requestVideoFrameCallback). */
@@ -99,7 +113,9 @@ export class SeekScheduler {
 
   /** No frame was presented soon after `seeked` (e.g. same frame): carry on anyway. */
   onPresentTimeout(): void {
-    if (this.phase === "presenting") this.finish();
+    if (this.phase !== "presenting") return;
+    this.stats.presentTimeouts++;
+    this.finish();
   }
 
   /** The in-flight seek never completed; forget it and try again. */
@@ -135,6 +151,6 @@ export class SeekScheduler {
   }
 
   resetStats(): void {
-    this.stats = { requests: 0, issued: 0, latencies: [], maxLatency: 0, lastLatency: 0 };
+    this.stats = { requests: 0, issued: 0, latencies: [], maxLatency: 0, lastLatency: 0, presentTimeouts: 0, sameFrameSeeks: 0 };
   }
 }
