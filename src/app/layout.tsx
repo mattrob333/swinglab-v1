@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { TabBar } from "@/components/shell/TabBar";
+import { ServiceWorker } from "@/components/shell/ServiceWorker";
+import { SyncProvider } from "@/lib/sync/SyncProvider";
 
 export const metadata: Metadata = {
   title: "SwingLab",
@@ -26,8 +28,11 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full antialiased">
       <body className="flex h-full flex-col overflow-hidden bg-bg text-[#f7f8f8]">
-        <main className="relative min-h-0 flex-1">{children}</main>
-        <TabBar />
+        <SyncProvider>
+          <main className="relative min-h-0 flex-1">{children}</main>
+          <TabBar />
+        </SyncProvider>
+        <ServiceWorker />
       </body>
     </html>
   );
