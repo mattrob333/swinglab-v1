@@ -100,18 +100,22 @@ export function VideoPane({ clip, engine, flipped, startTime, onScrub, onInterac
   }, [clipId, processed, engine]);
 
   // Keep the engine's view of the clip (trim, fps) current; seek to startTime on a new clip.
-  const boundIdRef = useRef<string | null>(null);
+  const boundRef = useRef<{ id: string; processed: boolean; trimStart: number } | null>(null);
   useEffect(() => {
     if (!clip) return;
-    const isNew = boundIdRef.current !== clip.id;
-    boundIdRef.current = clip.id;
+    const prev = boundRef.current;
+    const isNew = prev?.id !== clip.id;
+    // The optimized file starts at the old trim start, so keep the same moment of
+    // the swing on screen when it replaces the original (and re-anchor any link).
+    const swapped = !isNew && !!prev && !prev.processed && clip.processed;
+    boundRef.current = { id: clip.id, processed: clip.processed, trimStart: clip.trimStart };
     engine.setClip(
       { id: clip.id, trimStart: clip.trimStart, trimEnd: clip.trimEnd, sloMoFactor: clip.sloMoFactor, durationSec: clip.durationSec, fps: clip.fps },
-      isNew ? startTime : undefined,
+      isNew ? startTime : swapped ? engine.time - prev.trimStart : undefined,
     );
-    if (isNew) onClipBound?.();
+    if (isNew || swapped) onClipBound?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clip?.id, clip?.trimStart, clip?.trimEnd, clip?.sloMoFactor, clip?.fps, clip?.durationSec, engine]);
+  }, [clip?.id, clip?.processed, clip?.trimStart, clip?.trimEnd, clip?.sloMoFactor, clip?.fps, clip?.durationSec, engine]);
 
   // Crop from the clip (unless a gesture is in progress), flip from props.
   const gestureRef = useRef<GestureState | null>(null);

@@ -59,7 +59,15 @@ export function SnapsGallery() {
           </li>
         ))}
       </ul>
-      {open && <SnapViewer key={open.id} snap={open} onClose={() => setOpenId(null)} />}
+      {open && (
+        <SnapViewer
+          key={open.id}
+          snap={open}
+          // A clip this snapshot shows was deleted: compare would open something else.
+          clipMissing={clips !== undefined && [open.topClipId, open.bottomClipId].some((id) => id && !titles.has(id))}
+          onClose={() => setOpenId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -82,7 +90,7 @@ function SnapTile({ snap, caption, onOpen }: { snap: Snapshot; caption: string; 
   );
 }
 
-function SnapViewer({ snap, onClose }: { snap: Snapshot; onClose: () => void }) {
+function SnapViewer({ snap, clipMissing, onClose }: { snap: Snapshot; clipMissing: boolean; onClose: () => void }) {
   const router = useRouter();
   const { url, blob } = useSnapshotImage(snap.id);
   const [note, setNote] = useState(snap.note);
@@ -141,10 +149,11 @@ function SnapViewer({ snap, onClose }: { snap: Snapshot; onClose: () => void }) 
           <button
             type="button"
             onClick={() => router.push(compareHrefForSnapshot(snap))}
-            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-neon font-semibold text-black"
+            disabled={clipMissing}
+            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-neon font-semibold text-black disabled:bg-elevated disabled:text-muted"
             data-testid="snap-open-compare"
           >
-            <Icon d={ICONS.compare} className="h-5 w-5" /> Open in compare
+            <Icon d={ICONS.compare} className="h-5 w-5" /> {clipMissing ? "Clip was deleted" : "Open in compare"}
           </button>
         </div>
       </div>

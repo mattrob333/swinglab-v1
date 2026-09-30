@@ -48,6 +48,12 @@ function rowsFromFiles(files: Iterable<File>): Row[] {
   return rows;
 }
 
+function countSkipped(files: Iterable<File>): number {
+  let n = 0;
+  for (const f of files) if (!looksLikeVideoFile(f.name, f.type)) n++;
+  return n;
+}
+
 function sizeLabel(bytes: number) {
   return bytes > 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.round(bytes / 1e3)} KB`;
 }
@@ -60,6 +66,7 @@ export function BulkImport({ initialFiles, onClose }: { initialFiles?: File[]; o
   const [rows, setRows] = useState<Row[]>(() => rowsFromFiles(initialFiles ?? []));
   const [dragOver, setDragOver] = useState(false);
   const [running, setRunning] = useState(false);
+  const [skipped, setSkipped] = useState(() => countSkipped(initialFiles ?? []));
   const inputRef = useRef<HTMLInputElement>(null);
   const jobs = useJobs();
 
@@ -71,7 +78,9 @@ export function BulkImport({ initialFiles, onClose }: { initialFiles?: File[]; o
 
   const addFiles = (files: FileList | File[] | null | undefined) => {
     if (!files) return;
-    setRows((prev) => [...prev, ...rowsFromFiles(Array.from(files))]);
+    const list = Array.from(files);
+    setSkipped(countSkipped(list));
+    setRows((prev) => [...prev, ...rowsFromFiles(list)]);
   };
 
   const update = (key: string, patch: Partial<Row>) =>
@@ -99,7 +108,8 @@ export function BulkImport({ initialFiles, onClose }: { initialFiles?: File[]; o
   }
 
   const pendingCount = rows.filter((r) => r.status === "ready" || r.status === "error").length;
-  const allImported = rows.length > 0 && pendingCount === 0;
+  // Done only once every row is really in (a row that is still "Reading…" is not).
+  const allImported = rows.length > 0 && !running && rows.every((r) => r.status === "imported");
 
   function rowProgress(r: Row): { label: string; pct: number; tone: string } {
     if (r.status === "ready") return { label: "Ready", pct: 0, tone: "text-muted" };
@@ -272,6 +282,7 @@ export function BulkImport({ initialFiles, onClose }: { initialFiles?: File[]; o
         <div className="flex items-center gap-3 border-t border-line px-4 py-3">
           <span className="flex-1 text-xs text-muted">
             {rows.length === 0 ? "No files yet" : `${rows.length} file${rows.length === 1 ? "" : "s"}`}
+            {skipped > 0 ? ` · skipped ${skipped} non-video file${skipped === 1 ? "" : "s"}` : ""}
             {allImported ? " · optimizing continues in the background" : ""}
           </span>
           {allImported ? (

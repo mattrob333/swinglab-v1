@@ -84,7 +84,7 @@ export function PickerStrip({ clips, selectedId, onSelect, testId, label }: Prop
               aria-selected={active}
               data-clip-id={c.id}
               onClick={() => onSelect(c.id)}
-              className={`relative flex h-12 shrink-0 snap-center flex-col justify-end overflow-hidden rounded-lg border text-left transition-colors ${
+              className={`relative flex h-12 shrink-0 snap-center snap-always flex-col justify-end overflow-hidden rounded-lg border text-left transition-colors ${
                 active ? "border-neon" : "border-line"
               }`}
               style={{ width: ITEM_W }}

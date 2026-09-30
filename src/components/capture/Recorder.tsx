@@ -187,16 +187,21 @@ export function Recorder() {
     <div className="fixed inset-0 z-40 overflow-hidden bg-black text-white" data-testid="recorder" data-phase={phase}>
       <video ref={videoRef} className="absolute inset-0 h-full w-full object-cover" autoPlay muted playsInline />
 
-      {/* Top bar */}
-      <div className="safe-top absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/60 to-transparent">
+      {/* Top bar: above the error/saving overlays so Close is always reachable */}
+      <div className="safe-top absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/60 to-transparent">
         <div className="flex items-center justify-between px-4 pt-3 pb-6">
-          <IconButton label="Close" onClick={() => (window.history.length > 1 ? router.back() : router.push("/"))} disabled={recording}>
+          <IconButton
+            label="Close"
+            onClick={() => (window.history.length > 1 ? router.back() : router.push("/"))}
+            disabled={recording || phase === "saving"}
+            testId="recorder-close"
+          >
             <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
           </IconButton>
           <div
-            className={`flex items-center gap-2 rounded-full px-3 py-1.5 font-mono text-base tabular-nums ${recording ? "bg-red-600" : "bg-black/45"}`}
+            className={`flex items-center gap-2 rounded-full px-3 py-1.5 font-mono text-base tabular-nums ${recording ? "bg-red-600" : "bg-black/45"} ${phase === "error" ? "invisible" : ""}`}
             data-testid="rec-timer"
           >
             {recording && <span className="h-2 w-2 animate-pulse rounded-full bg-white" aria-hidden />}

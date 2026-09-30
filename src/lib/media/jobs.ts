@@ -4,7 +4,8 @@
 // A tiny in-memory store (subscribe / getSnapshot) lets the UI show
 // "Optimizing…" badges; `resumePendingJobs()` picks up unprocessed clips on load.
 
-import { getClip, getPlayableBlob, listClips, putClip } from "@/lib/store/local-db";
+import { getClip, getPlayableBlob, listClips, listSnapshots, putClip, updateSnapshot } from "@/lib/store/local-db";
+import { loadCompareState, saveCompareState } from "@/lib/player/compare-state";
 import type { Clip } from "@/lib/types";
 import { SerialQueue } from "./queue";
 import { clampTrim } from "./trim";
@@ -183,7 +184,40 @@ async function runJob(clipId: string): Promise<void> {
     updatedAt: now,
   };
   await putClip(next, thumb ? { playable: result.blob, thumb } : { playable: result.blob });
+  await rebaseSavedTimes(clipId, latest.trimStart, result.durationSec);
   setJob(clipId, { state: "done", progress: 1, elapsedMs: result.elapsedMs });
+}
+
+/**
+ * The optimized file starts at the old trim start. Times saved against the
+ * original (snapshots, the compare screen's last position) move by that offset
+ * so they still point at the same frame.
+ */
+async function rebaseSavedTimes(clipId: string, offset: number, duration: number): Promise<void> {
+  if (!(offset > 0)) return;
+  const shift = (t: number | null) => (t == null ? t : Math.min(duration, Math.max(0, t - offset)));
+  const cs = loadCompareState();
+  if (cs && (cs.topClipId === clipId || cs.bottomClipId === clipId)) {
+    saveCompareState({
+      ...cs,
+      topTime: cs.topClipId === clipId ? (shift(cs.topTime) ?? 0) : cs.topTime,
+      bottomTime: cs.bottomClipId === clipId ? (shift(cs.bottomTime) ?? 0) : cs.bottomTime,
+    });
+  }
+  try {
+    for (const s of await listSnapshots()) {
+      const top = s.topClipId === clipId;
+      const bottom = s.bottomClipId === clipId;
+      if (top || bottom) {
+        await updateSnapshot(s.id, {
+          ...(top ? { topTime: shift(s.topTime) } : {}),
+          ...(bottom ? { bottomTime: shift(s.bottomTime) } : {}),
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[jobs] could not update snapshot times", err);
+  }
 }
 
 // Dev-only handle for headless checks and debugging.

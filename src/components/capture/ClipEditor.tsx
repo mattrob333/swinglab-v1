@@ -75,6 +75,19 @@ function draftFrom(clip: Clip): Draft {
   };
 }
 
+async function saveDraft(d: Draft, c: Clip) {
+  const trim = clampTrim(d.trim, c.durationSec);
+  await updateClip(c.id, {
+    title: d.title.trim() || c.title,
+    handedness: d.handedness,
+    sloMoFactor: d.sloMoFactor,
+    cameraView: d.cameraView,
+    trimStart: trim.start,
+    trimEnd: trim.end,
+    crop: clampCrop(d.crop),
+  });
+}
+
 export function ClipEditor({ clipId }: { clipId: string }) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -91,9 +104,6 @@ export function ClipEditor({ clipId }: { clipId: string }) {
   const scrubbing = useRef(false);
   const pausedRef = useRef(false);
   const seek = useRef<{ busy: boolean; since: number; pending: number | null }>({ busy: false, since: 0, pending: null });
-
-  // Don't let background processing start on this clip while it's being edited.
-  useEffect(() => holdClip(clipId), [clipId]);
 
   // Load once per clip (and after "restore original"); edits live in `draft`.
   useEffect(() => {
@@ -167,7 +177,47 @@ export function ClipEditor({ clipId }: { clipId: string }) {
     return () => cancelAnimationFrame(raf);
   }, [seekTo, src]);
 
-  const patch = (p: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...p } : d));
+  const dirty = useRef(false);
+  const patch = (p: Partial<Draft>) => {
+    dirty.current = true;
+    setDraft((d) => (d ? { ...d, ...p } : d));
+  };
+
+  // Autosave edits so Back, a reload or iOS evicting the tab never loses the trim.
+  const autosave = useRef<{ timer: ReturnType<typeof setTimeout>; d: Draft; c: Clip } | null>(null);
+  const flushAutosave = useCallback(() => {
+    const a = autosave.current;
+    if (!a) return;
+    clearTimeout(a.timer);
+    autosave.current = null;
+    void saveDraft(a.d, a.c);
+  }, []);
+  const cancelAutosave = () => {
+    if (autosave.current) clearTimeout(autosave.current.timer);
+    autosave.current = null;
+    dirty.current = false;
+  };
+  useEffect(() => {
+    if (!dirty.current || !draft || !clip) return;
+    if (autosave.current) clearTimeout(autosave.current.timer);
+    autosave.current = { timer: setTimeout(flushAutosave, 400), d: draft, c: clip };
+  }, [draft, clip, flushAutosave]);
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flushAutosave();
+    };
+    window.addEventListener("pagehide", flushAutosave);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.removeEventListener("pagehide", flushAutosave);
+      document.removeEventListener("visibilitychange", onHide);
+      flushAutosave();
+    };
+  }, [flushAutosave]);
+
+  // Don't let background processing start on this clip while it's being edited.
+  // Declared after the autosave effect so the draft is flushed before the hold is released.
+  useEffect(() => holdClip(clipId), [clipId]);
 
   function onTrimChange(t: TrimWindow) {
     trimRef.current = t;
@@ -199,23 +249,11 @@ export function ClipEditor({ clipId }: { clipId: string }) {
     }
   }
 
-  async function save(d: Draft, c: Clip) {
-    const trim = clampTrim(d.trim, c.durationSec);
-    await updateClip(c.id, {
-      title: d.title.trim() || c.title,
-      handedness: d.handedness,
-      sloMoFactor: d.sloMoFactor,
-      cameraView: d.cameraView,
-      trimStart: trim.start,
-      trimEnd: trim.end,
-      crop: clampCrop(d.crop),
-    });
-  }
-
   async function onCompare() {
     if (!clip || !draft || busy) return;
     setBusy("compare");
-    await save(draft, clip);
+    cancelAutosave();
+    await saveDraft(draft, clip);
     // Processing runs in the background; the hold is released when we unmount.
     if (!clip.processed) enqueueProcessing(clip.id, { priority: true });
     const param = clip.kind === "pro" ? "top" : "bottom";
@@ -225,6 +263,7 @@ export function ClipEditor({ clipId }: { clipId: string }) {
   async function onRestore() {
     if (!clip || busy) return;
     setBusy("restore");
+    cancelAutosave();
     try {
       await restoreOriginal(clip.id);
       setReload((r) => r + 1);
@@ -237,6 +276,7 @@ export function ClipEditor({ clipId }: { clipId: string }) {
     if (!clip || busy) return;
     if (!confirm("Delete this swing from this device?")) return;
     setBusy("delete");
+    cancelAutosave();
     cancelProcessing(clip.id);
     await deleteClip(clip.id);
     router.replace(clip.kind === "pro" ? "/library" : "/");
@@ -287,7 +327,7 @@ export function ClipEditor({ clipId }: { clipId: string }) {
             </svg>
           </button>
           <h1 className="flex-1 truncate text-base font-semibold">{isPro ? "Edit pro clip" : "Trim your swing"}</h1>
-          {job && (job.state === "running" || job.state === "queued") && (
+          {job?.state === "running" && (
             <span className="mr-2 text-xs text-muted">Optimizing {Math.round(job.progress * 100)}%</span>
           )}
         </header>
