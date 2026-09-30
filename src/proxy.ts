@@ -48,6 +48,9 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isPublicPath(pathname)) return response;
+  // API routes check auth themselves and answer 401 JSON; a redirect to the
+  // login page would hand fetch() an HTML 200 instead.
+  if (pathname.startsWith("/api/")) return response;
 
   const hasAuthCookie = request.cookies.getAll().some((c) => c.name.startsWith("sb-") && c.name.includes("auth-token"));
   if (hasAuthCookie && error && isAuthRetryableFetchError(error)) return response;

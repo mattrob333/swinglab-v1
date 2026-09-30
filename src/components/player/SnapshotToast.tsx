@@ -7,6 +7,8 @@ import { useEffect, useRef, useState } from "react";
 import { useObjectUrl } from "@/lib/store/hooks";
 import { updateSnapshot } from "@/lib/store/local-db";
 import { downloadBlob, shareImage } from "@/lib/player/snapshot";
+import { appendText } from "@/lib/ai/client";
+import { VoiceNoteButton } from "@/components/ai/VoiceNoteButton";
 import { Icon, ICONS } from "./icons";
 
 interface Props {
@@ -74,6 +76,17 @@ export function SnapshotToast({ snapshotId, blob, onClose }: Props) {
           placeholder="Add a note (e.g. hands at load)"
           className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 text-base outline-none focus:border-neon/60"
           data-testid="toast-note"
+        />
+        <VoiceNoteButton
+          testId="toast-voice"
+          bubble="below"
+          onActive={() => setEngaged(true)}
+          onText={(t) => {
+            const next = appendText(note, t);
+            setNote(next);
+            if (noteTimer.current) clearTimeout(noteTimer.current);
+            void updateSnapshot(snapshotId, { note: next });
+          }}
         />
         <Link href="/snaps" className="flex h-11 items-center rounded-xl bg-surface px-3 text-sm font-semibold">
           View

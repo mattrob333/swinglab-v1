@@ -4,7 +4,19 @@
 // DOM-free and framework-free (unit tested in tests/data-sync-plan.test.ts).
 // The side effects live in ./engine.ts.
 
-import type { CameraView, Clip, ClipKind, Crop, Handedness, Snapshot, SyncState } from "../types.ts";
+import type {
+  Analysis,
+  AnalysisModel,
+  CameraView,
+  Clip,
+  ClipKind,
+  Crop,
+  DrillVideo,
+  Handedness,
+  Snapshot,
+  SwingAnalysisResult,
+  SyncState,
+} from "../types.ts";
 
 // ---------------------------------------------------------------------------
 // Remote row shapes (snake_case mirror of Clip / Snapshot; see supabase/migrations)
@@ -53,9 +65,27 @@ export interface SnapshotRow {
   server_updated_at: string;
 }
 
+export interface AnalysisRow {
+  id: string;
+  owner_id: string;
+  snapshot_ids: string[];
+  model: string;
+  model_id: string;
+  coach_notes: string;
+  transcript: string;
+  result: unknown;
+  drill_videos: unknown;
+  status: string;
+  error: string | null;
+  created_at: string;
+  deleted_at: string | null;
+  server_updated_at: string;
+}
+
 /** Columns the client writes (server_updated_at is stamped by a trigger). */
 export type ClipUpsert = Omit<ClipRow, "server_updated_at">;
 export type SnapshotUpsert = Omit<SnapshotRow, "server_updated_at">;
+export type AnalysisUpsert = Omit<AnalysisRow, "server_updated_at">;
 
 // ---------------------------------------------------------------------------
 // Ledger: what this device last exchanged with the server, per signed-in user.
@@ -81,13 +111,23 @@ export interface Ledger {
   userId: string;
   clips: Record<string, LedgerEntry>;
   snapshots: Record<string, LedgerEntry>;
+  /** Added with AI analyses; ledgers saved before that parse with an empty map. */
+  analyses: Record<string, LedgerEntry>;
   /** Pull cursors: max server_updated_at applied. */
-  cursor: { clips: string | null; snapshots: string | null };
+  cursor: { clips: string | null; snapshots: string | null; analyses: string | null };
   lastSyncAt: string | null;
 }
 
 export function emptyLedger(userId: string): Ledger {
-  return { version: 1, userId, clips: {}, snapshots: {}, cursor: { clips: null, snapshots: null }, lastSyncAt: null };
+  return {
+    version: 1,
+    userId,
+    clips: {},
+    snapshots: {},
+    analyses: {},
+    cursor: { clips: null, snapshots: null, analyses: null },
+    lastSyncAt: null,
+  };
 }
 
 /** Parse a stored ledger; anything malformed or for another user yields a fresh one. */
@@ -103,7 +143,12 @@ export function parseLedger(raw: string | null | undefined, userId: string): Led
       userId,
       clips: v.clips ?? {},
       snapshots: v.snapshots ?? {},
-      cursor: { clips: v.cursor?.clips ?? null, snapshots: v.cursor?.snapshots ?? null },
+      analyses: v.analyses && typeof v.analyses === "object" ? v.analyses : {},
+      cursor: {
+        clips: v.cursor?.clips ?? null,
+        snapshots: v.cursor?.snapshots ?? null,
+        analyses: v.cursor?.analyses ?? null,
+      },
       lastSyncAt: v.lastSyncAt ?? null,
     };
   } catch {
@@ -127,6 +172,13 @@ export function clipFingerprint(c: Clip): string {
 export function snapshotFingerprint(s: Snapshot): string {
   return JSON.stringify([
     s.imageType, s.topClipId, s.bottomClipId, s.topTime, s.bottomTime, s.topFlipped, s.bottomFlipped, s.note,
+  ]);
+}
+
+/** Analyses have no media; everything mirrored is in the fingerprint. */
+export function analysisFingerprint(a: Analysis): string {
+  return JSON.stringify([
+    a.snapshotIds, a.model, a.modelId, a.coachNotes, a.transcript, a.result, a.drillVideos, a.status, a.error,
   ]);
 }
 
@@ -258,6 +310,51 @@ export function rowToSnapshot(row: SnapshotRow): Snapshot {
   };
 }
 
+export function analysisToRow(a: Analysis, ownerId: string): AnalysisUpsert {
+  return {
+    id: a.id,
+    owner_id: ownerId,
+    snapshot_ids: [...a.snapshotIds],
+    model: a.model,
+    model_id: a.modelId ?? "",
+    coach_notes: a.coachNotes ?? "",
+    transcript: a.transcript ?? "",
+    result: a.result ?? null,
+    drill_videos: Array.isArray(a.drillVideos) ? a.drillVideos : [],
+    status: a.status,
+    error: a.error ?? null,
+    created_at: a.createdAt,
+    deleted_at: null,
+  };
+}
+
+export function rowToAnalysis(row: AnalysisRow): Analysis {
+  const result =
+    row.result && typeof row.result === "object" && !Array.isArray(row.result) ? (row.result as SwingAnalysisResult) : null;
+  const drillVideos = Array.isArray(row.drill_videos)
+    ? (row.drill_videos as unknown[]).filter(
+        (v): v is DrillVideo =>
+          !!v && typeof v === "object" && typeof (v as DrillVideo).url === "string" && typeof (v as DrillVideo).title === "string",
+      )
+    : [];
+  const status: Analysis["status"] = row.status === "done" || row.status === "error" ? row.status : "pending";
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    snapshotIds: Array.isArray(row.snapshot_ids) ? row.snapshot_ids : [],
+    model: (row.model === "sol" ? "sol" : "opus") as AnalysisModel,
+    modelId: row.model_id ?? "",
+    coachNotes: row.coach_notes ?? "",
+    transcript: row.transcript ?? "",
+    result,
+    drillVideos,
+    status,
+    error: row.error,
+    ownerId: row.owner_id,
+    syncState: "synced",
+  };
+}
+
 function finiteOr(v: number | null | undefined, fallback: number): number {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
@@ -324,6 +421,31 @@ export function planSnapshotPush({ snapshot, entry, userId, imageSig }: Snapshot
   return { action: "push", owner, claim: snapshot.ownerId === null, uploadMedia, uploadThumb: false };
 }
 
+export interface AnalysisPushInput {
+  analysis: Analysis;
+  entry: LedgerEntry | undefined;
+  userId: string;
+}
+
+/**
+ * Analyses carry no media. A "pending" analysis is a request still running on
+ * this device (or one that died mid-way): it is never pushed; the route
+ * handler stores finished analyses itself and the device pushes its copy once
+ * it is done or failed.
+ */
+export function planAnalysisPush({ analysis, entry, userId }: AnalysisPushInput): PushDecision {
+  const owner = analysis.ownerId ?? userId;
+  if (owner !== userId) return { action: "skip", reason: "foreign" };
+  if (analysis.status === "pending") return { action: "none" };
+  const metaDirty =
+    !entry ||
+    entry.fp !== analysisFingerprint(analysis) ||
+    DIRTY_STATES.includes(analysis.syncState) ||
+    analysis.ownerId === null;
+  if (!metaDirty) return { action: "none" };
+  return { action: "push", owner, claim: analysis.ownerId === null, uploadMedia: false, uploadThumb: false };
+}
+
 /**
  * Items this device previously synced that are gone from the local store.
  * Own rows become remote soft-deletes; others' rows are just forgotten.
@@ -346,6 +468,27 @@ export function planLocalDeletes(
   const remoteDelete: string[] = [];
   const forget: string[] = [];
   for (const id of missing) (entries[id].owner === userId ? remoteDelete : forget).push(id);
+  return { remoteDelete, forget, resetLedger: false };
+}
+
+/**
+ * planLocalDeletes for analyses. An empty analyses store only means "wiped"
+ * when the rest of the store is empty too; otherwise the user simply deleted
+ * their last analysis, which must become a normal remote delete.
+ */
+export function planAnalysisLocalDeletes(
+  entries: Record<string, LedgerEntry>,
+  localIds: ReadonlySet<string>,
+  userId: string,
+  storeHasOtherData: boolean,
+): { remoteDelete: string[]; forget: string[]; resetLedger: boolean } {
+  const plan = planLocalDeletes(entries, localIds, userId);
+  if (!plan.resetLedger || !storeHasOtherData) return plan;
+  const remoteDelete: string[] = [];
+  const forget: string[] = [];
+  for (const id of Object.keys(entries)) {
+    if (!localIds.has(id)) (entries[id].owner === userId ? remoteDelete : forget).push(id);
+  }
   return { remoteDelete, forget, resetLedger: false };
 }
 
@@ -376,6 +519,23 @@ export function planSnapshotPull(
   // pushed on the next run (the owner's device is the only writer anyway).
   const localDirty =
     DIRTY_STATES.includes(local.syncState) || (entry !== undefined && entry.fp !== snapshotFingerprint(local));
+  return localDirty ? "skip" : "update";
+}
+
+export function planAnalysisPull(
+  row: AnalysisRow,
+  local: Analysis | undefined,
+  entry: LedgerEntry | undefined,
+): PullAction {
+  if (row.deleted_at) return local ? "delete" : "forget";
+  if (!local) return entry ? "skip" : "create";
+  if (entry && entry.rv === row.server_updated_at) return "skip";
+  // The server finished an analysis this device still shows as running
+  // (e.g. the app was closed mid-stream): take the server's result.
+  if (local.status === "pending" && row.status !== "pending") return "update";
+  // Like snapshots: no local updatedAt, so an unpushed local edit wins.
+  const localDirty =
+    DIRTY_STATES.includes(local.syncState) || (entry !== undefined && entry.fp !== analysisFingerprint(local));
   return localDirty ? "skip" : "update";
 }
 
@@ -442,6 +602,7 @@ export function countPending(
   ledger: Ledger,
   userId: string,
   isAdmin: boolean,
+  analyses: Analysis[] = [],
 ): { pending: number; blocked: number } {
   let pending = 0;
   let blocked = 0;
@@ -459,6 +620,11 @@ export function countPending(
     if ((s.ownerId ?? userId) !== userId) continue;
     const e = ledger.snapshots[s.id];
     if (!e || e.fp !== snapshotFingerprint(s) || DIRTY_STATES.includes(s.syncState)) pending++;
+  }
+  for (const a of analyses) {
+    if ((a.ownerId ?? userId) !== userId || a.status === "pending") continue;
+    const e = (ledger.analyses ?? {})[a.id];
+    if (!e || e.fp !== analysisFingerprint(a) || DIRTY_STATES.includes(a.syncState)) pending++;
   }
   return { pending, blocked };
 }

@@ -16,6 +16,7 @@ mode** (no sign-in, no sync). You can deploy that first and add Supabase later.
 | `clips` bucket (private, 200 MB/file, mp4/mov/webm/jpeg/png) | same | Objects at `{user_id}/{clip_id}.mp4` (+ `.jpg` thumbnail). |
 | `snapshots` bucket (private, 20 MB/file, jpeg/png) | same | Objects at `{user_id}/{snapshot_id}.jpg`. |
 | Row level security on every table and on storage | same | See "Security model" below. |
+| `analyses`, `ai_usage` tables | `supabase/migrations/20260930000200_ai.sql` | AI reports (synced like snapshots) and per-request usage for the daily cap. See "AI coaching". |
 
 ## One-time setup (about 15 minutes)
 
@@ -162,11 +163,98 @@ To try the app against the local stack, put the local URL and publishable key in
 `.env.local`, restart `next dev`, and create users at http://127.0.0.1:54323
 (Studio) or with the admin API.
 
+## AI coaching (optional)
+
+SwingLab can analyze 1-6 snapshots with coach notes and a voice note, and find
+YouTube drill videos for the issues it finds. It is **off until you add API
+keys**, and it only ever works for **signed-in users** (Supabase configured).
+
+| Feature | Model | Needs |
+| --- | --- | --- |
+| Swing analysis (primary) | Claude Opus 5.5 (`claude-opus-5-5`, effort `high`) | `ANTHROPIC_API_KEY` |
+| Second opinion | GPT-6.1 Sol (`gpt-6.1-sol`) | `OPENAI_API_KEY` |
+| Voice-note transcription | `gpt-4o-transcribe` (configurable) | `OPENAI_API_KEY` |
+| Drill videos (YouTube search) | Claude Opus 5.5 + web search limited to youtube.com (effort `low`) | `ANTHROPIC_API_KEY` |
+
+### Environment variables (server-only; never prefix them with `NEXT_PUBLIC_`)
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | unset | Claude API key (console.anthropic.com → API Keys). Unset = no Opus analysis, no drill videos. |
+| `OPENAI_API_KEY` | unset | OpenAI API key (platform.openai.com → API keys). Unset = no Sol, no voice-note transcription. |
+| `OPENAI_TRANSCRIBE_MODEL` | `gpt-4o-transcribe` | Speech-to-text model, e.g. `gpt-4o-mini-transcribe` to save money. |
+| `AI_DAILY_LIMIT` | `30` | Requests per user per UTC day, all AI features combined. `0` turns AI off. |
+| `AI_ALLOW_LOCAL` | unset | Development only: `1` lets `next dev` use AI **without** Supabase (local-only mode). Ignored in production. |
+
+Add them in Vercel → Project → **Settings → Environment Variables**, then
+redeploy. Each feature appears in the app only when its key is present
+(`GET /api/ai/status`).
+
+### Database
+
+`supabase/migrations/20260930000200_ai.sql` adds two tables (apply with
+`npx supabase@2.118.0 db push`, as above):
+
+- `analyses`: the AI reports, synced between devices like snapshots (read own +
+  household, write own).
+- `ai_usage`: one row per AI request (kind, model, tokens). Each user can read
+  and insert only their own rows and can never update or delete them, so the
+  daily cap cannot be reset from the app. Handy for checking spend:
+
+```sql
+select date_trunc('day', created_at) as day, kind, model_id, count(*),
+       sum(input_tokens) as input_tokens, sum(output_tokens) as output_tokens
+from public.ai_usage group by 1, 2, 3 order by 1 desc;
+```
+
+### Security
+
+- Every AI route (`/api/ai/status`, `analyze`, `transcribe`, `drills`) checks the
+  signed-in Supabase user on the server. Without Supabase configured they
+  answer **503** (except `next dev` with `AI_ALLOW_LOCAL=1`).
+- Inputs are bounded before any model call: at most 6 images, each at most
+  2 MB and really JPEG/PNG (checked by magic bytes); notes up to 4000
+  characters, transcript up to 8000; audio up to 20 MB and audio types only.
+- API keys stay on the server; images, notes and keys are never logged.
+- Usage is written with the user's own session (RLS), not a service key.
+
+### Costs (rough, check the providers' pricing pages)
+
+- **Opus analysis:** $4 per million input tokens, $20 per million output
+  tokens. A 3-6 snapshot report is roughly 10-25k input and 5-15k output
+  tokens (thinking included): about **$0.15-0.40** each.
+- **Drill videos:** a few web searches ($10 per 1,000 searches) plus tokens for
+  the search results: roughly **$0.05-0.25** per search.
+- **GPT-6.1 Sol / transcription:** see OpenAI's pricing page; transcription is
+  billed per minute of audio (cents per note).
+- The daily cap bounds the worst case: 30 requests × ~$0.40 ≈ **$12 per user
+  per day**. Also set a monthly spend limit in both consoles (Anthropic:
+  **Settings → Limits**; OpenAI: **Settings → Limits**).
+
+### Turning AI off
+
+- One feature: remove its API key (e.g. delete `OPENAI_API_KEY` to disable Sol
+  and transcription) and redeploy.
+- Everything: set `AI_DAILY_LIMIT=0` (or remove both keys) and redeploy.
+- Emergency: revoke the key in the provider console; requests then fail with a
+  clear message and nothing else in the app is affected.
+
+### Hosting limits to know
+
+- Vercel caps request bodies at **4.5 MB**. The app shrinks snapshot images
+  before sending so a 6-snapshot request fits; long voice notes over ~4.5 MB
+  are rejected by the platform before they reach the app, so keep notes to a
+  few minutes.
+- `/api/ai/analyze` sets `maxDuration = 300` seconds (the Hobby maximum with
+  Fluid compute); drills 180, transcription 120.
+
 ## How sync behaves
 
 - Runs on app load, on sign-in, when the device comes back online, when the app
   returns to the foreground, a few seconds after local changes, every 3 minutes,
   and on **Settings → Sync now**. Failures retry with backoff (5 s up to 5 min).
+- AI analyses sync like snapshots (metadata only; a report still running on a
+  device is not uploaded until it finishes).
 - Uploads your new or changed clips (the processed, seek-friendly file when it
   exists, otherwise the original, plus the thumbnail) and snapshots. A clip is
   uploaded again when its playable file is replaced after processing.

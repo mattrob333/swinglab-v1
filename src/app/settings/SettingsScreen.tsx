@@ -6,17 +6,15 @@ import type { Handedness } from "@/lib/types";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { useSync } from "@/lib/sync/SyncProvider";
 import type { SyncStatus } from "@/lib/sync/controller";
+import { getDefaultHandedness } from "@/lib/media/prefs";
 
 /** Read by the capture flow as the default batter side. */
 const HANDEDNESS_KEY = "swinglab.defaultHandedness";
 const handednessListeners = new Set<() => void>();
 
+// Same default as the capture flow (src/lib/media/prefs.ts): the son bats left.
 function readHandedness(): Handedness {
-  try {
-    return localStorage.getItem(HANDEDNESS_KEY) === "L" ? "L" : "R";
-  } catch {
-    return "R";
-  }
+  return getDefaultHandedness();
 }
 
 function subscribeHandedness(listener: () => void) {
@@ -90,7 +88,7 @@ const buttonClass =
 export function SettingsScreen() {
   const configured = isSupabaseConfigured();
   const { status, syncNow, signOut } = useSync();
-  const handedness = useSyncExternalStore(subscribeHandedness, readHandedness, () => "R" as Handedness);
+  const handedness = useSyncExternalStore(subscribeHandedness, readHandedness, () => "L" as Handedness);
   const [storage, setStorage] = useState<{ usage: number; quota: number; persisted: boolean | null } | null>(null);
   const [persistMessage, setPersistMessage] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);

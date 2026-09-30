@@ -21,7 +21,10 @@ export function TabBar() {
     <nav className="safe-bottom border-t border-line bg-surface/95 backdrop-blur" aria-label="Main">
       <ul className="mx-auto flex max-w-2xl">
         {TABS.map((tab) => {
-          const active = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
+          const active =
+            tab.href === "/"
+              ? pathname === "/"
+              : pathname.startsWith(tab.href) || (tab.href === "/snaps" && pathname.startsWith("/analysis"));
           return (
             <li key={tab.href} className="flex-1">
               <Link

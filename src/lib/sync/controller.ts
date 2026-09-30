@@ -4,7 +4,7 @@
 // store changes (debounced), every few minutes, and on "Sync now". Failed runs
 // retry with exponential backoff. Never throws into the UI.
 
-import { listClips, listSnapshots, subscribe } from "@/lib/store/local-db";
+import { listAnalyses, listClips, listSnapshots, subscribe } from "@/lib/store/local-db";
 import { getSupabaseBrowserClient, type SwingLabClient } from "@/lib/supabase/client";
 import { SyncRun, loadLedger } from "./engine";
 import { backoffMs, countPending } from "./plan";
@@ -161,8 +161,8 @@ export class SyncController {
       const user = this.status.user;
       if (!user) return;
       try {
-        const [clips, snaps] = await Promise.all([listClips(), listSnapshots()]);
-        const { pending, blocked } = countPending(clips, snaps, loadLedger(user.id), user.id, this.isAdmin);
+        const [clips, snaps, analyses] = await Promise.all([listClips(), listSnapshots(), listAnalyses()]);
+        const { pending, blocked } = countPending(clips, snaps, loadLedger(user.id), user.id, this.isAdmin, analyses);
         this.set({ pending, blocked });
       } catch {
         // store unavailable (private mode): leave counts as they are

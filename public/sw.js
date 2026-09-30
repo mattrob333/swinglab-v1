@@ -14,7 +14,7 @@ const VERSION = "v1";
 const SHELL_CACHE = `swinglab-shell-${VERSION}`;
 const STATIC_CACHE = `swinglab-static-${VERSION}`;
 // Main screens, so they open offline even if not visited since install.
-const PRECACHE = ["/", "/capture", "/compare", "/library", "/snaps", "/settings", "/manifest.webmanifest", "/icon.svg"];
+const PRECACHE = ["/", "/capture", "/compare", "/library", "/snaps", "/analysis", "/settings", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

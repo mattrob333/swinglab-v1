@@ -23,7 +23,33 @@ export type Database = {
           }
         },"public": {
           Tables: {
-            "clips": {
+            "ai_usage": {
+                  Row: {
+                    "created_at": string,"id": number,"input_tokens": number,"kind": string,"model_id": string,"output_tokens": number,"user_id": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"id"?: never,"input_tokens"?: number,"kind": string,"model_id"?: string,"output_tokens"?: number,"user_id"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: never,"input_tokens"?: number,"kind"?: string,"model_id"?: string,"output_tokens"?: number,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"analyses": {
+                  Row: {
+                    "coach_notes": string,"created_at": string,"deleted_at": string | null,"drill_videos": NonNullable<Json>,"error": string | null,"id": string,"model": string,"model_id": string,"owner_id": string,"result": Json | null,"server_updated_at": string,"snapshot_ids": (string)[],"status": string,"transcript": string
+                  }
+                  Insert: {
+                    "coach_notes"?: string,"created_at"?: string,"deleted_at"?: string | null,"drill_videos"?: NonNullable<Json>,"error"?: string | null,"id": string,"model": string,"model_id"?: string,"owner_id"?: string,"result"?: Json | null,"server_updated_at"?: string,"snapshot_ids"?: (string)[],"status"?: string,"transcript"?: string
+                  }
+                  Update: {
+                    "coach_notes"?: string,"created_at"?: string,"deleted_at"?: string | null,"drill_videos"?: NonNullable<Json>,"error"?: string | null,"id"?: string,"model"?: string,"model_id"?: string,"owner_id"?: string,"result"?: Json | null,"server_updated_at"?: string,"snapshot_ids"?: (string)[],"status"?: string,"transcript"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"clips": {
                   Row: {
                     "camera_view": string,"created_at": string,"crop": NonNullable<Json>,"deleted_at": string | null,"duration_sec": number,"fps": number | null,"handedness": string,"height": number,"id": string,"kind": string,"notes": string,"owner_id": string,"processed": boolean,"server_updated_at": string,"slo_mo_factor": number,"storage_path": string | null,"thumb_path": string | null,"title": string,"trim_end": number,"trim_start": number,"updated_at": string,"width": number
                   }
