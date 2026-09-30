@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { RATES, type PlaybackRate, type PlayerEngine } from "@/lib/player/engine";
 import { formatSeconds, frameIndex } from "@/lib/player/time";
+import { fineScrubLevel, nextFineDrag, type FineDragState } from "@/lib/player/fine-scrub";
 
 interface Props {
   engine: PlayerEngine;
@@ -28,7 +29,8 @@ export function Scrubber({ engine, onScrub, onStep, onTogglePlay, onRate, onInte
   const timeRef = useRef<HTMLSpanElement>(null);
   const frameRef = useRef<HTMLSpanElement>(null);
   const widthRef = useRef(0);
-  const dragRef = useRef<{ id: number; left: number; width: number } | null>(null);
+  const dragRef = useRef<{ id: number; left: number; width: number; centerY: number; fine: FineDragState } | null>(null);
+  const fineRef = useRef<HTMLSpanElement>(null);
   const lastFracRef = useRef(0);
   const [playing, setPlaying] = useState(false);
   const [rate, setRateState] = useState<PlaybackRate>(engine.rate);
@@ -84,12 +86,21 @@ export function Scrubber({ engine, onScrub, onStep, onTogglePlay, onRate, onInte
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine]);
 
-  const timeAt = (clientX: number) => {
+  const showFine = (label: string) => {
+    const el = fineRef.current;
+    if (!el) return;
+    el.textContent = label;
+    el.style.opacity = label ? "1" : "0";
+  };
+
+  const timeAt = (clientX: number, clientY: number) => {
     const d = dragRef.current;
     if (!d) return engine.time;
-    const frac = Math.min(1, Math.max(0, (clientX - d.left) / d.width));
-    place(frac);
-    return engine.trimStart + frac * (engine.trimEnd - engine.trimStart);
+    const distance = clientY - d.centerY;
+    d.fine = nextFineDrag(d.fine, clientX, distance, d.left, d.width);
+    showFine(fineScrubLevel(distance).label);
+    place(d.fine.frac);
+    return engine.trimStart + d.fine.frac * (engine.trimEnd - engine.trimStart);
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -99,9 +110,15 @@ export function Scrubber({ engine, onScrub, onStep, onTogglePlay, onRate, onInte
     onInteract?.();
     el.setPointerCapture(e.pointerId);
     const r = el.getBoundingClientRect();
-    dragRef.current = { id: e.pointerId, left: r.left, width: r.width || 1 };
+    dragRef.current = {
+      id: e.pointerId,
+      left: r.left,
+      width: r.width || 1,
+      centerY: r.top + r.height / 2,
+      fine: { frac: lastFracRef.current, lastX: e.clientX, relative: false },
+    };
     el.dataset.dragging = "1";
-    const t = timeAt(e.clientX);
+    const t = timeAt(e.clientX, e.clientY);
     writeLabels(t);
     onScrub(t);
   };
@@ -109,7 +126,7 @@ export function Scrubber({ engine, onScrub, onStep, onTogglePlay, onRate, onInte
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = dragRef.current;
     if (!d || d.id !== e.pointerId) return;
-    const t = timeAt(e.clientX);
+    const t = timeAt(e.clientX, e.clientY);
     writeLabels(t);
     onScrub(t);
   };
@@ -117,9 +134,10 @@ export function Scrubber({ engine, onScrub, onStep, onTogglePlay, onRate, onInte
   const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = dragRef.current;
     if (!d || d.id !== e.pointerId) return;
-    const t = timeAt(e.clientX);
+    const t = timeAt(e.clientX, e.clientY);
     onScrub(t);
     dragRef.current = null;
+    showFine("");
     delete trackRef.current?.dataset.dragging;
   };
 
@@ -174,6 +192,7 @@ export function Scrubber({ engine, onScrub, onStep, onTogglePlay, onRate, onInte
         </div>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between text-[10px] leading-3 tabular-nums text-muted">
           <span ref={timeRef} data-testid={`${testId}-time`}>0.00s</span>
+          <span ref={fineRef} data-testid={`${testId}-fine`} className="text-neon transition-opacity" style={{ opacity: 0 }} aria-live="polite" />
           <span ref={frameRef}>f0</span>
         </div>
       </div>

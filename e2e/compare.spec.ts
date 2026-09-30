@@ -185,3 +185,23 @@ test("play and slow-mo advance the video and stop inside the trim window", async
   const v = await page.getByTestId("pane-bottom-video").evaluate((el) => (el as HTMLVideoElement).playbackRate);
   expect(v).toBe(0.5);
 });
+
+test("fine scrub: sliding the finger away from the track slows the scrub", async ({ page }) => {
+  const box = await trackBox(page, "bottom");
+  const y = box.y + box.height / 2;
+  const startX = box.x + box.width * 0.5;
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await waitSettled(page, "bottom");
+  const before = await thumbX(page, "bottom");
+  // Move the finger 200px up (10% speed), then 100px right.
+  const fineY = Math.max(5, y - 200);
+  const speed = y - fineY >= 160 ? 0.1 : y - fineY >= 100 ? 0.25 : 0.5;
+  await page.mouse.move(startX, fineY, { steps: 5 });
+  await expect(page.getByTestId("scrubber-bottom-fine")).toHaveText(/Fine scrub/);
+  await page.mouse.move(startX + 100, fineY, { steps: 10 });
+  const after = await thumbX(page, "bottom");
+  expect(Math.abs(after - before - 100 * speed)).toBeLessThan(3);
+  await page.mouse.up();
+  await expect(page.getByTestId("scrubber-bottom-fine")).toHaveText("");
+});
