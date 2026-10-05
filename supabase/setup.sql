@@ -2,6 +2,9 @@
 -- Paste this whole file into Supabase -> SQL Editor -> New query, and click Run once.
 -- It is the two files in supabase/migrations/ combined, in order.
 -- Run it only on a NEW, empty project.
+-- If the editor warns "Potential issue detected" (tables without RLS), click
+-- "Run without RLS": every table gets RLS later in this script, and the
+-- "Run and enable RLS" option rewrites the SQL and breaks it.
 
 begin;
 
